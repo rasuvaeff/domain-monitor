@@ -1,0 +1,91 @@
+{
+    "name": "rasuvaeff/domain-monitor",
+    "description": "Domain monitoring toolkit for HTTP, SSL, WHOIS, DNS, ports, security headers, robots.txt, and sitemaps.",
+    "license": "BSD-3-Clause",
+    "type": "library",
+    "keywords": [
+        "domain",
+        "monitoring",
+        "ssl",
+        "whois",
+        "dns",
+        "psr-18"
+    ],
+    "authors": [
+        {
+            "name": "Victor Razuvaev",
+            "email": "rasuvaeff@gmail.com"
+        }
+    ],
+    "homepage": "https://github.com/rasuvaeff/domain-monitor",
+    "support": {
+        "issues": "https://github.com/rasuvaeff/domain-monitor/issues",
+        "source": "https://github.com/rasuvaeff/domain-monitor"
+    },
+    "require": {
+        "php": "^8.3",
+        "ext-libxml": "*",
+        "ext-openssl": "*",
+        "ext-simplexml": "*",
+        "io-developer/php-whois": "^4.0",
+        "psr/http-client": "^1.0",
+        "psr/http-factory": "^1.0",
+        "psr/http-message": "^1.0 || ^2.0",
+        "psr/log": "^3.0"
+    },
+    "require-dev": {
+        "ergebnis/composer-normalize": "^2.51",
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "guzzlehttp/guzzle": "^7.10",
+        "infection/infection": "^0.29",
+        "maglnet/composer-require-checker": "^4.17",
+        "nyholm/psr7": "^1.8",
+        "phpunit/phpunit": "^11.5",
+        "psalm/plugin-phpunit": "^0.19",
+        "rector/rector": "^2.4",
+        "vimeo/psalm": "^6.16"
+    },
+    "suggest": {
+        "ext-intl": "Enables IDN (internationalized domain name) normalization in HostNormalizer",
+        "guzzlehttp/guzzle": "PSR-18 HTTP client implementation",
+        "nyholm/psr7": "PSR-17 request factory implementation",
+        "symfony/http-client": "Alternative PSR-18 HTTP client"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rasuvaeff\\DomainMonitor\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rasuvaeff\\DomainMonitor\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true,
+            "infection/extension-installer": true
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "build": [
+            "@composer validate --strict",
+            "@composer normalize --dry-run",
+            "@require-checker",
+            "@cs",
+            "@psalm",
+            "@test"
+        ],
+        "cs": "php-cs-fixer fix --dry-run --diff --config=.php-cs-fixer.php",
+        "cs:fix": "php-cs-fixer fix --diff --config=.php-cs-fixer.php",
+        "mutation": "infection --threads=max",
+        "psalm": "psalm --no-cache",
+        "rector": "rector process --dry-run",
+        "rector:fix": "rector process",
+        "require-checker": "composer-require-checker check composer.json",
+        "test": "phpunit",
+        "test:coverage": "phpunit --coverage-text --coverage-clover=build/coverage.xml",
+        "test:coverage:ci": "phpunit --coverage-clover=build/coverage.xml"
+    }
+}

@@ -1,0 +1,80 @@
+# domain-monitor
+
+## Install
+
+```bash
+composer require rasuvaeff/domain-monitor
+```
+
+## Rules
+
+- HTTP services require a PSR-18 client and a PSR-17 request factory.
+- Host-only inputs go to host services; HTTP services require `http://` or `https://` URLs.
+- `SslCertificateService` reads peer certificates best-effort and does not verify trust.
+- The package does not orchestrate checks or cache data; use `DomainHealthReport` as a container only.
+
+## API reference
+
+### Normalize input
+
+```php
+use Rasuvaeff\DomainMonitor\HostNormalizer;
+
+$normalizer = new HostNormalizer();
+$host = $normalizer->normalizeHost(hostOrUrl: 'https://Example.com:8443/path');
+$url = $normalizer->normalizeUrl(url: 'https://Example.com/path');
+```
+
+### Probe a URL
+
+```php
+use Rasuvaeff\DomainMonitor\HttpProbeOptions;
+use Rasuvaeff\DomainMonitor\HttpProbeService;
+
+$result = $probeService->check(
+    url: 'https://example.com',
+    options: new HttpProbeOptions(
+        method: 'GET',
+        headers: ['Accept' => 'text/html'],
+    ),
+);
+```
+
+### Check SSL, WHOIS, DNS
+
+```php
+$ssl = $sslService->check(host: 'example.com', expectedOrg: 'Example');
+$whois = $whoisService->check(host: 'example.com');
+$dns = $dnsService->check(host: 'example.com');
+```
+
+### Check content, ports, headers, robots, sitemap
+
+```php
+$content = $contentService->check(url: 'https://example.com', requiredText: 'Example');
+$port = $portService->check(host: 'example.com', port: 443);
+$headers = $headersService->check(response: $response);
+$robots = $robotsService->check(baseUrl: 'https://example.com');
+$sitemap = $sitemapService->check(sitemapUrl: 'https://example.com/sitemap.xml');
+```
+
+### Build a report
+
+```php
+use Rasuvaeff\DomainMonitor\DomainHealthReport;
+
+$report = new DomainHealthReport(
+    host: 'example.com',
+    probe: $probe,
+    ssl: $ssl,
+    whois: $whois,
+    dns: $dns,
+    port: $port,
+    content: $content,
+    securityHeaders: $headers,
+    robotsTxt: $robots,
+    sitemap: $sitemap,
+);
+
+$status = $report->getStatus(); // ok | warning | critical | unknown
+```
