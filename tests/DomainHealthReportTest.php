@@ -149,6 +149,128 @@ final class DomainHealthReportTest extends TestCase
         yield 'ok and warning keeps warning' => [200, CheckStatus::WARNING, CheckStatus::WARNING];
     }
 
+    #[Test]
+    public function passesThroughContentStatus(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            content: new \Rasuvaeff\DomainMonitor\HttpContentCheck(
+                status: CheckStatus::CRITICAL,
+                httpStatus: 200,
+                finalUrl: null,
+                requiredTextFound: false,
+                forbiddenTextFound: false,
+            ),
+        );
+
+        $this->assertSame(CheckStatus::CRITICAL, $report->getStatus());
+    }
+
+    #[Test]
+    public function passesThroughSecurityHeadersStatus(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            securityHeaders: new \Rasuvaeff\DomainMonitor\SecurityHeadersCheck(
+                status: CheckStatus::WARNING,
+                hasHsts: false,
+                hasContentSecurityPolicy: false,
+                hasXFrameOptions: false,
+                hasXContentTypeOptions: false,
+                presentHeaders: [],
+                missingHeaders: ['X-Frame-Options'],
+            ),
+        );
+
+        $this->assertSame(CheckStatus::WARNING, $report->getStatus());
+    }
+
+    #[Test]
+    public function passesThroughRobotsTxtStatus(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            robotsTxt: new \Rasuvaeff\DomainMonitor\RobotsTxtCheck(
+                status: CheckStatus::OK,
+                httpStatus: 200,
+                exists: true,
+                sitemaps: [],
+            ),
+        );
+
+        $this->assertSame(CheckStatus::OK, $report->getStatus());
+    }
+
+    #[Test]
+    public function passesThroughSitemapStatus(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            sitemap: new \Rasuvaeff\DomainMonitor\SitemapCheck(
+                status: CheckStatus::WARNING,
+                httpStatus: 404,
+                exists: false,
+                urlCount: 0,
+            ),
+        );
+
+        $this->assertSame(CheckStatus::WARNING, $report->getStatus());
+    }
+
+    #[Test]
+    public function selectsLaterStatusWhenOrderIsEqual(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            probe: new ProbeResult(status: 400, totalTime: 0.1),
+            port: new PortCheck(status: CheckStatus::WARNING, host: 'example.com', port: 443, connectTime: 0.1),
+        );
+
+        $this->assertSame(CheckStatus::WARNING, $report->getStatus());
+    }
+
+    #[Test]
+    public function mapsWhoisStatusAsCriticalAtBoundaryZero(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            whois: new TldInfo(
+                domain: 'example.com',
+                expirationDate: new DateTimeImmutable(datetime: '-1 day'),
+            ),
+        );
+
+        $this->assertSame(CheckStatus::CRITICAL, $report->getStatus());
+    }
+
+    #[Test]
+    public function mapsWhoisStatusAsWarningAtExactlyZeroDays(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            whois: new TldInfo(
+                domain: 'example.com',
+                expirationDate: new DateTimeImmutable(datetime: '+15 days'),
+            ),
+        );
+
+        $this->assertSame(CheckStatus::WARNING, $report->getStatus());
+    }
+
+    #[Test]
+    public function mapsWhoisStatusAsWarningAtExactly30Days(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            whois: new TldInfo(
+                domain: 'example.com',
+                expirationDate: new DateTimeImmutable(datetime: '+30 days'),
+            ),
+        );
+
+        $this->assertSame(CheckStatus::WARNING, $report->getStatus());
+    }
+
     private function certificate(string $validUntil): SslCertificate
     {
         return new SslCertificate(

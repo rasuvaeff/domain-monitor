@@ -112,6 +112,28 @@ final class HttpContentCheckServiceTest extends TestCase
     }
 
     #[Test]
+    public function acceptsBoundaryExpectedStatus100(): void
+    {
+        $service = $this->service(new FakeResponse(statusCode: 100, body: ''));
+
+        $result = $service->check(url: 'https://example.com', expectedStatus: 100);
+
+        $this->assertSame(CheckStatus::OK, $result->status);
+        $this->assertSame(100, $result->httpStatus);
+    }
+
+    #[Test]
+    public function acceptsBoundaryExpectedStatus599(): void
+    {
+        $service = $this->service(new FakeResponse(statusCode: 599, body: ''));
+
+        $result = $service->check(url: 'https://example.com', expectedStatus: 599);
+
+        $this->assertSame(CheckStatus::OK, $result->status);
+        $this->assertSame(599, $result->httpStatus);
+    }
+
+    #[Test]
     public function returnsCriticalAndLogsOnNetworkFailure(): void
     {
         $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'reset'));

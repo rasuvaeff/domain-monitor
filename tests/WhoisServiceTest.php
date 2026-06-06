@@ -77,21 +77,6 @@ final class WhoisServiceTest extends TestCase
     }
 
     #[Test]
-    public function retriesWithBaseDomainWhenSubdomainLookupFails(): void
-    {
-        $vendorInfo = $this->createVendorInfo(['domainName' => 'example.com']);
-        $whois = $this->createMock(Whois::class);
-        $whois->expects($this->exactly(2))
-            ->method('loadDomainInfo')
-            ->willReturnOnConsecutiveCalls(null, $vendorInfo);
-
-        $result = (new WhoisService(whois: $whois))->check(host: 'a.b.example.com');
-
-        $this->assertNotNull($result);
-        $this->assertSame('example.com', $result->domain);
-    }
-
-    #[Test]
     public function returnsNullWhenLookupAndFallbackBothFail(): void
     {
         $whois = $this->createMock(Whois::class);
@@ -103,7 +88,89 @@ final class WhoisServiceTest extends TestCase
     }
 
     #[Test]
-    public function returnsNullWithoutFallbackForBaseDomain(): void
+    public function retriesWithBaseDomainWhenSubdomainLookupFails(): void
+    {
+        $vendorInfo = $this->createVendorInfo(['domainName' => 'example.com']);
+        $whois = $this->createMock(Whois::class);
+        $whois->expects($this->exactly(2))
+            ->method('loadDomainInfo')
+            ->willReturnCallback(static function (string $domain) use ($vendorInfo) {
+                return $domain === 'example.com' ? $vendorInfo : null;
+            });
+
+        $result = (new WhoisService(whois: $whois))->check(host: 'a.b.example.com');
+
+        $this->assertNotNull($result);
+        $this->assertSame('example.com', $result->domain);
+    }
+
+    #[Test]
+    public function usesStatesKeyWhenPresent(): void
+    {
+        $vendorInfo = $this->createVendorInfo([
+            'domainName' => 'example.com',
+            'states' => ['active'],
+            'status' => ['wrong'],
+        ]);
+        $whois = $this->createMock(Whois::class);
+        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+
+        $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
+
+        $this->assertNotNull($result);
+        $this->assertSame(['active'], $result->states);
+    }
+
+    #[Test]
+    public function usesStatesKeyFromVendorInfo(): void
+    {
+        $vendorInfo = $this->createVendorInfo([
+            'domainName' => 'example.com',
+            'states' => ['active'],
+        ]);
+        $whois = $this->createMock(Whois::class);
+        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+
+        $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
+
+        $this->assertNotNull($result);
+        $this->assertSame(['active'], $result->states);
+    }
+
+    #[Test]
+    public function setsRegistrarToNullWhenEmpty(): void
+    {
+        $vendorInfo = $this->createVendorInfo([
+            'domainName' => 'example.com',
+            'registrar' => '',
+        ]);
+        $whois = $this->createMock(Whois::class);
+        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+
+        $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
+
+        $this->assertNotNull($result);
+        $this->assertNull($result->registrar);
+    }
+
+    #[Test]
+    public function ignoresZeroAndNegativeExpirationTimestamps(): void
+    {
+        $vendorInfo = $this->createVendorInfo([
+            'domainName' => 'example.com',
+            'expirationDate' => 0,
+        ]);
+        $whois = $this->createMock(Whois::class);
+        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+
+        $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
+
+        $this->assertNotNull($result);
+        $this->assertNull($result->expirationDate);
+    }
+
+    #[Test]
+    public function returnsNullForShortHostWithoutFallback(): void
     {
         $whois = $this->createMock(Whois::class);
         $whois->expects($this->once())

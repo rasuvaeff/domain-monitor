@@ -53,6 +53,30 @@ final class PortCheckTest extends TestCase
     }
 
     #[Test]
+    public function acceptsBoundaryPort1(): void
+    {
+        $check = new PortCheck(status: CheckStatus::OK, host: 'example.com', port: 1, connectTime: 0.0);
+
+        $this->assertSame(1, $check->port);
+    }
+
+    #[Test]
+    public function acceptsBoundaryPort65535(): void
+    {
+        $check = new PortCheck(status: CheckStatus::OK, host: 'example.com', port: 65535, connectTime: 0.0);
+
+        $this->assertSame(65535, $check->port);
+    }
+
+    #[Test]
+    public function acceptsZeroConnectTime(): void
+    {
+        $check = new PortCheck(status: CheckStatus::OK, host: 'example.com', port: 443, connectTime: 0.0);
+
+        $this->assertSame(0.0, $check->connectTime);
+    }
+
+    #[Test]
     public function throwsOnNegativeConnectTime(): void
     {
         $this->expectException(exception: InvalidArgumentException::class);

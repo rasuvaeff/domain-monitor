@@ -35,6 +35,38 @@ final class SitemapCheckTest extends TestCase
     }
 
     #[Test]
+    public function acceptsHttpStatusZero(): void
+    {
+        $check = new SitemapCheck(status: CheckStatus::UNKNOWN, httpStatus: 0, exists: false, urlCount: 0);
+
+        $this->assertSame(0, $check->httpStatus);
+    }
+
+    #[Test]
+    public function acceptsBoundaryHttpStatus100(): void
+    {
+        $check = new SitemapCheck(status: CheckStatus::OK, httpStatus: 100, exists: false, urlCount: 0);
+
+        $this->assertSame(100, $check->httpStatus);
+    }
+
+    #[Test]
+    public function acceptsBoundaryHttpStatus599(): void
+    {
+        $check = new SitemapCheck(status: CheckStatus::OK, httpStatus: 599, exists: false, urlCount: 0);
+
+        $this->assertSame(599, $check->httpStatus);
+    }
+
+    #[Test]
+    public function acceptsZeroUrlCount(): void
+    {
+        $check = new SitemapCheck(status: CheckStatus::OK, httpStatus: 200, exists: false, urlCount: 0);
+
+        $this->assertSame(0, $check->urlCount);
+    }
+
+    #[Test]
     public function throwsOnNegativeUrlCount(): void
     {
         $this->expectException(exception: InvalidArgumentException::class);
