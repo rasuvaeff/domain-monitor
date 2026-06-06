@@ -29,6 +29,7 @@ docker run --rm -v "$PWD":/app -w /app composer:2 composer build
 docker run --rm -v "$PWD":/app -w /app composer:2 composer cs:fix
 docker run --rm -v "$PWD":/app -w /app composer:2 composer psalm
 docker run --rm -v "$PWD":/app -w /app composer:2 composer test
+docker run --rm -v "$PWD":/app -w /app composer:2 composer release-check
 ```
 
 Or with Make:
@@ -38,9 +39,14 @@ make build
 make cs-fix
 make psalm
 make test
+make test-coverage
+make mutation
+make release-check
 ```
 
 `composer.lock` is gitignored (library).
+`make test-coverage` and `make mutation` bootstrap `pcov` inside the
+`composer:2` container because the base image has no coverage driver.
 
 ## Invariants & gotchas
 
@@ -51,7 +57,12 @@ make test
 - `WhoisService` maps vendor `TldInfo` to package `TldInfo`; do not leak vendor DTOs in the public API.
 - Code: `declare(strict_types=1)`, `#[\Override]`, explicit types.
 
+- `examples/` is part of the public contract: keep scripts runnable and update
+  `examples/README.md` when example usage changes.
+
 ## When you finish
 
-- Update `README.md` and `examples/` if usage changed; update `CHANGELOG.md` when releasing.
-- Re-run `composer build` and paste the output.
+- Update `README.md` (and `examples/` if usage changed); update `CHANGELOG.md`
+  when releasing.
+- Re-run `composer build`; if the change affects the public API or release
+  process, also run `make release-check`. Paste the output.

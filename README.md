@@ -250,6 +250,8 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 ## Examples
 
 See [examples/](examples/) for runnable scripts.
+Examples are expected to execute without fatal errors and stay aligned with the
+documented public API.
 
 | Script | Shows | Network? |
 |---|---|---|
@@ -275,6 +277,9 @@ No PHP/Composer on the host — run in Docker via the `composer:2` image:
 ```bash
 docker run --rm -v "$PWD":/app -w /app composer:2 composer install
 docker run --rm -v "$PWD":/app -w /app composer:2 composer build
+docker run --rm -v "$PWD":/app -w /app composer:2 composer cs:fix
+docker run --rm -v "$PWD":/app -w /app composer:2 composer test
+docker run --rm -v "$PWD":/app -w /app composer:2 composer release-check
 ```
 
 Or with Make:
@@ -284,6 +289,9 @@ make install
 make build
 make cs-fix
 make test
+make test-coverage
+make mutation
+make release-check
 ```
 
 Integration tests (marked `@coversNothing`) skip unless `DOMAIN_MONITOR_NET=1` is set:
@@ -291,6 +299,9 @@ Integration tests (marked `@coversNothing`) skip unless `DOMAIN_MONITOR_NET=1` i
 ```bash
 DOMAIN_MONITOR_NET=1 make test
 ```
+
+`make test-coverage` and `make mutation` bootstrap `pcov` inside the
+`composer:2` container because the base image has no coverage driver.
 
 ## License
 
