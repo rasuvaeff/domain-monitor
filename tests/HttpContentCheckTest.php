@@ -6,6 +6,7 @@ namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
@@ -48,17 +49,54 @@ final class HttpContentCheckTest extends TestCase
     }
 
     #[Test]
-    public function throwsOnInvalidStatus(): void
+    #[DataProvider('throwsOnInvalidStatusProvider')]
+    public function throwsOnInvalidStatus(int $httpStatus): void
     {
         $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Invalid HTTP status 600');
 
         new HttpContentCheck(
             status: CheckStatus::UNKNOWN,
-            httpStatus: 600,
+            httpStatus: $httpStatus,
             finalUrl: null,
             requiredTextFound: false,
             forbiddenTextFound: false,
         );
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function throwsOnInvalidStatusProvider(): iterable
+    {
+        yield '99' => [99];
+        yield '600' => [600];
+    }
+
+    #[Test]
+    public function acceptsBoundaryHttpStatus100(): void
+    {
+        $check = new HttpContentCheck(
+            status: CheckStatus::OK,
+            httpStatus: 100,
+            finalUrl: null,
+            requiredTextFound: false,
+            forbiddenTextFound: false,
+        );
+
+        $this->assertSame(100, $check->httpStatus);
+    }
+
+    #[Test]
+    public function acceptsBoundaryHttpStatus599(): void
+    {
+        $check = new HttpContentCheck(
+            status: CheckStatus::OK,
+            httpStatus: 599,
+            finalUrl: null,
+            requiredTextFound: false,
+            forbiddenTextFound: false,
+        );
+
+        $this->assertSame(599, $check->httpStatus);
     }
 }

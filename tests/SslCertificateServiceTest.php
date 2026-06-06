@@ -155,6 +155,16 @@ final class SslCertificateServiceTest extends TestCase
     }
 
     #[Test]
+    public function returnsNullWhenSubjectCnIsNotString(): void
+    {
+        $this->assertNull($this->service->mapCertInfo(certInfo: [
+            'validFrom_time_t' => 1_767_225_600,
+            'validTo_time_t' => 1_769_817_600,
+            'subject' => ['CN' => 123],
+        ]));
+    }
+
+    #[Test]
     public function throwsOnEmptyExpectedOrganization(): void
     {
         $this->expectException(exception: InvalidArgumentException::class);

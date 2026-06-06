@@ -29,6 +29,7 @@ final class HttpProbeServiceTest extends TestCase
 
         $this->assertSame(204, $result->status);
         $this->assertGreaterThanOrEqual(0.0, $result->totalTime);
+        $this->assertLessThan(10.0, $result->totalTime);
     }
 
     #[Test]
@@ -69,6 +70,7 @@ final class HttpProbeServiceTest extends TestCase
 
         $this->assertSame(0, $result->status);
         $this->assertGreaterThanOrEqual(0.0, $result->totalTime);
+        $this->assertLessThan(10.0, $result->totalTime);
         $this->assertCount(1, $logger->records);
         $this->assertSame('down', $logger->records[0]['message']);
         $this->assertSame(['url' => 'https://example.com/'], $logger->records[0]['context']);

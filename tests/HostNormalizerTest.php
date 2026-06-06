@@ -37,10 +37,13 @@ final class HostNormalizerTest extends TestCase
         yield 'plain host' => ['example.com', 'example.com'];
         yield 'subdomain' => ['sub.example.com', 'sub.example.com'];
         yield 'uppercase' => ['EXAMPLE.COM', 'example.com'];
+        yield 'mixed case trailing dot' => ['Example.COM.', 'example.com'];
         yield 'trailing dot' => ['example.com.', 'example.com'];
         yield 'full url with scheme port path query fragment' => ['HTTPS://Example.COM:8443/path?x=1#frag', 'example.com'];
         yield 'scheme only host' => ['http://example.com', 'example.com'];
         yield 'leading slashes without scheme' => ['//example.com/path', 'example.com'];
+        yield 'leading whitespace is trimmed' => ['  example.com  ', 'example.com'];
+        yield 'leading tabs are trimmed' => ["\texample.com\t", 'example.com'];
     }
 
     #[Test]
@@ -74,6 +77,30 @@ final class HostNormalizerTest extends TestCase
         }
 
         $this->assertSame('xn--e1aybc.xn--p1ai', $this->normalizer->normalizeHost(hostOrUrl: 'тест.рф'));
+    }
+
+    #[Test]
+    public function normalizesIdnUppercaseWhenIntlIsAvailable(): void
+    {
+        if (!\function_exists('idn_to_ascii')) {
+            $this->markTestSkipped(message: 'ext-intl is not available');
+        }
+
+        $result = $this->normalizer->normalizeHost(hostOrUrl: 'ТЕСТ.РФ');
+
+        $this->assertSame($result, \strtolower($result));
+    }
+
+    #[Test]
+    public function normalizesIdnHostToExactLowercase(): void
+    {
+        if (!\function_exists('idn_to_ascii')) {
+            $this->markTestSkipped(message: 'ext-intl is not available');
+        }
+
+        $result = $this->normalizer->normalizeHost(hostOrUrl: 'Тест.рф');
+
+        $this->assertSame(\strtolower($result), $result);
     }
 
     #[Test]

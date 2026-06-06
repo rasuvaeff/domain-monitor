@@ -55,6 +55,20 @@ final class TldInfoTest extends TestCase
     }
 
     #[Test]
+    public function calculatesDaysWithExactDivisorBoundary(): void
+    {
+        $tldInfo = new TldInfo(
+            domain: 'example.com',
+            expirationDate: new DateTimeImmutable(datetime: '2026-01-02T23:59:59+00:00'),
+        );
+
+        $this->assertSame(
+            1,
+            $tldInfo->daysUntilExpiry(now: new DateTimeImmutable(datetime: '2026-01-01T00:00:00+00:00')),
+        );
+    }
+
+    #[Test]
     public function returnsNegativeDaysWhenExpired(): void
     {
         $tldInfo = new TldInfo(

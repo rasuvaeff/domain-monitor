@@ -41,6 +41,30 @@ final class RobotsTxtServiceTest extends TestCase
     }
 
     #[Test]
+    public function doesNotMatchSitemapLineWithoutLeadingWhitespaceOrStart(): void
+    {
+        $body = "xSitemap: https://example.com/fake.xml\nSitemap: https://example.com/real.xml\n";
+        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: $body));
+
+        $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
+            ->check(baseUrl: 'https://example.com');
+
+        $this->assertSame(['https://example.com/real.xml'], $result->sitemaps);
+    }
+
+    #[Test]
+    public function extractsUnicodeSitemapUrl(): void
+    {
+        $body = "Sitemap: https://example.com/sitemap-ü.xml\n";
+        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: $body));
+
+        $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
+            ->check(baseUrl: 'https://example.com');
+
+        $this->assertSame(['https://example.com/sitemap-ü.xml'], $result->sitemaps);
+    }
+
+    #[Test]
     public function returnsOkWithoutSitemapsWhenNoneListed(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: "User-agent: *\nDisallow:\n"));

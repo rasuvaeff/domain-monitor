@@ -37,6 +37,20 @@ final class SitemapServiceTest extends TestCase
     }
 
     #[Test]
+    public function countsExactlyOneUrlInSitemap(): void
+    {
+        $client = new RecordingHttpClient(response: new FakeResponse(
+            statusCode: 200,
+            body: '<urlset><url/></urlset>',
+        ));
+
+        $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
+            ->check(sitemapUrl: 'https://example.com/sitemap.xml');
+
+        $this->assertSame(1, $result->urlCount);
+    }
+
+    #[Test]
     public function countsUrlsInNamespacedSitemap(): void
     {
         $body = '<?xml version="1.0" encoding="UTF-8"?>'
@@ -51,6 +65,21 @@ final class SitemapServiceTest extends TestCase
 
         $this->assertSame(CheckStatus::OK, $result->status);
         $this->assertSame(2, $result->urlCount);
+    }
+
+    #[Test]
+    public function countsOneUrlInNamespacedSitemap(): void
+    {
+        $body = '<?xml version="1.0" encoding="UTF-8"?>'
+            . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            . '<url><loc>https://example.com/a</loc></url>'
+            . '</urlset>';
+        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: $body));
+
+        $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
+            ->check(sitemapUrl: 'https://example.com/sitemap.xml');
+
+        $this->assertSame(1, $result->urlCount);
     }
 
     #[Test]
@@ -83,6 +112,8 @@ final class SitemapServiceTest extends TestCase
     #[Test]
     public function returnsWarningForMalformedXml(): void
     {
+        $previousState = \libxml_use_internal_errors(use_errors: false);
+
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: '<urlset><url></urlset'));
 
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
@@ -91,6 +122,8 @@ final class SitemapServiceTest extends TestCase
         $this->assertSame(CheckStatus::WARNING, $result->status);
         $this->assertTrue($result->exists);
         $this->assertSame(0, $result->urlCount);
+
+        $this->assertFalse(\libxml_use_internal_errors(use_errors: $previousState));
     }
 
     #[Test]

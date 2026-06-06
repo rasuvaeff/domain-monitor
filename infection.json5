@@ -10,7 +10,7 @@
     "phpUnit": {
         "configDir": "."
     },
-    "minMsi": 80,
+    "minMsi": 92,
     "mutators": {
         "@default": true,
         // Raw I/O wrappers around PHP built-ins — no unit-testable logic, covered by integration tests only.

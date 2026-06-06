@@ -60,6 +60,21 @@ final class SslCertificateTest extends TestCase
     }
 
     #[Test]
+    public function calculatesDaysUntilExpiryWithExactDivisorBoundary(): void
+    {
+        $certificate = new SslCertificate(
+            validFrom: new DateTimeImmutable(datetime: '2026-01-01T00:00:00+00:00'),
+            validUntil: new DateTimeImmutable(datetime: '2026-01-02T23:59:59+00:00'),
+            subjectCn: 'example.com',
+        );
+
+        $this->assertSame(
+            1,
+            $certificate->daysUntilExpiry(now: new DateTimeImmutable(datetime: '2026-01-01T00:00:00+00:00')),
+        );
+    }
+
+    #[Test]
     public function reportsExpiredWhenValidUntilIsAtOrBeforeNow(): void
     {
         $certificate = $this->certificate(validUntil: '2026-01-10T00:00:00+00:00');
@@ -77,6 +92,15 @@ final class SslCertificateTest extends TestCase
 
         $this->assertTrue($certificate->isExpiringWithin(days: 10, now: $now));
         $this->assertFalse($certificate->isExpiringWithin(days: 9, now: $now));
+    }
+
+    #[Test]
+    public function isExpiringWithinAcceptsZeroDays(): void
+    {
+        $certificate = $this->certificate(validUntil: '2026-01-11T00:00:00+00:00');
+        $now = new DateTimeImmutable(datetime: '2026-01-11T00:00:00+00:00');
+
+        $this->assertTrue($certificate->isExpiringWithin(days: 0, now: $now));
     }
 
     #[Test]

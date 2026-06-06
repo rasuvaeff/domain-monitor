@@ -96,6 +96,17 @@ final class DnsServiceTest extends TestCase
     }
 
     #[Test]
+    public function skipsRecordWithNonStringTypeButPresent(): void
+    {
+        $records = (new DnsService(resolver: $this->resolver([
+            ['type' => 123, 'ip' => '5.6.7.8'],
+            ['type' => 'A', 'ip' => '1.2.3.4'],
+        ])))->check(host: 'example.com');
+
+        $this->assertSame(['1.2.3.4'], $records->a);
+    }
+
+    #[Test]
     public function returnsEmptyRecordsWhenResolverThrows(): void
     {
         $resolver = static function (string $host, int $type): array {
