@@ -7,6 +7,7 @@ namespace Rasuvaeff\DomainMonitor;
 use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
@@ -49,19 +50,12 @@ final readonly class HttpContentCheckService
 
         try {
             $response = $this->httpClient->sendRequest(request: $request);
-            $body = $response->getBody()->__toString();
-            $requiredTextFound = $requiredText === null || \str_contains(haystack: $body, needle: $requiredText);
-            $forbiddenTextFound = $forbiddenText !== null && \str_contains(haystack: $body, needle: $forbiddenText);
-            $status = $response->getStatusCode() === $expectedStatus && $requiredTextFound && !$forbiddenTextFound
-                ? CheckStatus::OK
-                : CheckStatus::CRITICAL;
 
-            return new HttpContentCheck(
-                status: $status,
-                httpStatus: $response->getStatusCode(),
-                finalUrl: null,
-                requiredTextFound: $requiredTextFound,
-                forbiddenTextFound: $forbiddenTextFound,
+            return $this->checkFromResponse(
+                response: $response,
+                expectedStatus: $expectedStatus,
+                requiredText: $requiredText,
+                forbiddenText: $forbiddenText,
             );
         } catch (ClientExceptionInterface $exception) {
             $this->logger->error(
@@ -77,5 +71,31 @@ final readonly class HttpContentCheckService
                 forbiddenTextFound: false,
             );
         }
+    }
+
+    public function checkFromResponse(
+        ResponseInterface $response,
+        int $expectedStatus = 200,
+        ?string $requiredText = null,
+        ?string $forbiddenText = null,
+    ): HttpContentCheck {
+        if ($expectedStatus < 100 || $expectedStatus > 599) {
+            throw new \InvalidArgumentException(message: \sprintf('Invalid HTTP status %d', $expectedStatus));
+        }
+
+        $body = $response->getBody()->__toString();
+        $requiredTextFound = $requiredText === null || \str_contains(haystack: $body, needle: $requiredText);
+        $forbiddenTextFound = $forbiddenText !== null && \str_contains(haystack: $body, needle: $forbiddenText);
+        $status = $response->getStatusCode() === $expectedStatus && $requiredTextFound && !$forbiddenTextFound
+            ? CheckStatus::OK
+            : CheckStatus::CRITICAL;
+
+        return new HttpContentCheck(
+            status: $status,
+            httpStatus: $response->getStatusCode(),
+            finalUrl: null,
+            requiredTextFound: $requiredTextFound,
+            forbiddenTextFound: $forbiddenTextFound,
+        );
     }
 }

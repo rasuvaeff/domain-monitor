@@ -11,15 +11,26 @@ final class FakeResponse implements ResponseInterface
 {
     private StreamInterface $body;
 
+    /** @var array<string, string[]> */
+    private array $headers;
+
     /**
      * @param array<string, string[]> $headers
      */
     public function __construct(
         private int $statusCode = 200,
         string $body = '',
-        private array $headers = [],
+        array $headers = [],
     ) {
         $this->body = new StringStream(content: $body);
+
+        $normalized = [];
+
+        foreach ($headers as $name => $value) {
+            $normalized[\strtolower(string: $name)] = \is_array($value) ? \array_values($value) : [$value];
+        }
+
+        $this->headers = $normalized;
     }
 
     #[\Override]

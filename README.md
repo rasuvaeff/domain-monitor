@@ -12,7 +12,7 @@ A modular domain monitoring toolkit for PHP 8.3+. Zero-framework, PSR-compatible
 
 **Checks:** HTTP probing · SSL certificates · WHOIS · DNS · TCP ports · security headers · `robots.txt` · sitemaps.
 
-**Does not include:** scheduling, persistence, caching, async runners, or a "check all" orchestrator. The package provides the building blocks; your application provides the workflow.
+**Does not include:** scheduling, persistence, caching, or async runners. The package provides building blocks and a `DomainMonitor` orchestrator; your application provides the workflow.
 
 > Using an AI coding assistant? [llms.txt](llms.txt) contains a compact API reference.
 
@@ -38,6 +38,53 @@ composer require symfony/http-client nyholm/psr7
 ```
 
 ## Quick start: a full domain check
+
+### Using the orchestrator (recommended)
+
+```php
+use Iodev\Whois\Factory;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Rasuvaeff\DomainMonitor\{
+    DnsService,
+    DomainMonitor,
+    DomainMonitorOptions,
+    HttpContentCheckService,
+    HttpProbeService,
+    PortService,
+    RobotsTxtService,
+    SecurityHeadersService,
+    SitemapService,
+    SslCertificateService,
+    WhoisService,
+};
+use Symfony\Component\HttpClient\Psr18Client;
+
+$client = new Psr18Client();
+$requestFactory = new Psr17Factory();
+
+$monitor = new DomainMonitor(
+    httpProbe: new HttpProbeService(httpClient: $client, requestFactory: $requestFactory),
+    ssl: new SslCertificateService(),
+    whois: new WhoisService(whois: Factory::get()->createWhois()),
+    dns: new DnsService(),
+    port: new PortService(),
+    securityHeaders: new SecurityHeadersService(),
+    robotsTxt: new RobotsTxtService(httpClient: $client, requestFactory: $requestFactory),
+    sitemap: new SitemapService(httpClient: $client, requestFactory: $requestFactory),
+    content: new HttpContentCheckService(httpClient: $client, requestFactory: $requestFactory),
+);
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(timeoutSeconds: 10.0),
+);
+
+echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
+```
+
+Services are optional — pass `null` (or omit) to disable a check. The orchestrator reuses a single HTTP response for probe + security headers + content check. Failed checks are caught, logged via PSR-3, and omitted from the report.
+
+### Manual composition
 
 ```php
 use DateTimeImmutable;
@@ -216,8 +263,11 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 
 | Class | What it does |
 |---|---|
+| `DomainMonitor` | Orchestrator: runs all configured services, reuses HTTP response for probe + security headers + content → `DomainHealthReport` |
+| `DomainMonitorOptions` | VO for orchestrator: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText |
 | `HostNormalizer` | Normalize hosts/URLs (lowercase, strip scheme/port/path, optional IDN) |
-| `HttpProbeService` | PSR-18 GET/HEAD probe with measured time → `ProbeResult` |
+| `HttpProbeService` | PSR-18 GET/HEAD probe with measured time → `ProbeResult`; `probeWithResponse()` for response reuse |
+| `HttpProbeWithResponse` | DTO: `ProbeResult` + `ResponseInterface` (for response reuse) |
 | `HttpProbeOptions` | Configure method, headers, timeout, user-agent for HTTP probes |
 | `ProbeResult` | DTO: `status`, `totalTime` |
 | `SslCertificateService` | Read remote SSL cert; optional org filter → `SslCertificate` |
@@ -234,7 +284,7 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `RobotsTxtCheck` | DTO: `exists`, `httpStatus`, `sitemaps[]` |
 | `SitemapService` | Fetch sitemap + count `<url>` entries → `SitemapCheck` |
 | `SitemapCheck` | DTO: `exists`, `httpStatus`, `urlCount` |
-| `HttpContentCheckService` | Status code + required/forbidden keyword check → `HttpContentCheck` |
+| `HttpContentCheckService` | Status code + required/forbidden keyword check → `HttpContentCheck`; `checkFromResponse()` for response reuse |
 | `HttpContentCheck` | DTO: `status`, `httpStatus`, `?finalUrl`, text flags |
 | `DomainHealthReport` | Composite DTO for all check results → `CheckStatus` |
 | `CheckStatus` | Enum: `OK`, `WARNING`, `CRITICAL`, `UNKNOWN` |
@@ -252,6 +302,7 @@ See [examples/](examples/) for runnable scripts.
 
 | Script | Shows | Network? |
 |---|---|---|
+| `full-check.php` | Full domain check via `DomainMonitor` orchestrator | Yes |
 | `http-probe.php` | HTTP probe + content check | Yes |
 | `ssl-whois-dns.php` | SSL, WHOIS, and DNS | Yes |
 | `port.php` | TCP port check with custom host/port | Yes |

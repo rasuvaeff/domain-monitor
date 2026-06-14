@@ -11,9 +11,44 @@ composer require rasuvaeff/domain-monitor
 - HTTP services require a PSR-18 client and a PSR-17 request factory.
 - Host-only inputs go to host services; HTTP services require `http://` or `https://` URLs.
 - `SslCertificateService` reads peer certificates best-effort and does not verify trust.
-- The package does not orchestrate checks or cache data; use `DomainHealthReport` as a container only.
+- `DomainMonitor` orchestrator runs all configured services in one call, reuses the HTTP response for probe + security headers + content check. Services are optional: `null` = check disabled.
+- `DomainMonitor` catches exceptions per check and omits failed checks from the report (logs via PSR-3).
 
 ## API reference
+
+### Run all checks at once (DomainMonitor orchestrator)
+
+```php
+use Rasuvaeff\DomainMonitor\DomainMonitor;
+use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
+
+$monitor = new DomainMonitor(
+    httpProbe: $probeService,
+    ssl: $sslService,
+    whois: $whoisService,
+    dns: $dnsService,
+    port: $portService,
+    securityHeaders: $headersService,
+    robotsTxt: $robotsService,
+    sitemap: $sitemapService,
+    content: $contentService,
+);
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(
+        port: 443,
+        timeoutSeconds: 10.0,
+        httpMethod: 'GET',
+        expectedOrg: 'Example Inc.',
+        requiredText: 'Welcome',
+    ),
+);
+
+echo $report->getStatus()->value;
+```
+
+Constructor invariant: `SecurityHeadersService` requires `HttpProbeService` (it needs the HTTP response).
 
 ### Normalize input
 
@@ -77,4 +112,18 @@ $report = new DomainHealthReport(
 );
 
 $status = $report->getStatus(); // ok | warning | critical | unknown
+```
+
+### Probe with response reuse
+
+```php
+use Rasuvaeff\DomainMonitor\HttpProbeWithResponse;
+
+$probeWithResponse = $probeService->probeWithResponse(url: 'https://example.com');
+$probeResult = $probeWithResponse->result;
+$response = $probeWithResponse->response;
+
+// Reuse response for security headers and content check
+$headers = $headersService->check(response: $response);
+$content = $contentService->checkFromResponse(response: $response, requiredText: 'Example');
 ```

@@ -2,6 +2,7 @@
 
 | Script | Shows | Needs server? |
 |---|---|---|
+| `full-check.php` | Full domain check via `DomainMonitor` orchestrator | Yes |
 | `http-probe.php` | PSR-18-based probe + content checks | Yes |
 | `ssl-whois-dns.php` | SSL, WHOIS, and DNS checks | Yes |
 | `port.php` | TCP port availability check | Yes |
@@ -18,6 +19,7 @@ request factory in your application, for example `symfony/http-client` and
 
 ```bash
 composer require symfony/http-client nyholm/psr7
+php examples/full-check.php example.com
 php examples/http-probe.php
 php examples/robots.php https://example.com
 php examples/sitemap.php https://www.example.com/sitemap.xml

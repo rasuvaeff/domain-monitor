@@ -166,6 +166,74 @@ final class HttpContentCheckServiceTest extends TestCase
         $this->assertSame('probe/1.0', $client->lastRequest->getHeaderLine(name: 'User-Agent'));
     }
 
+    #[Test]
+    public function checkFromResponseReturnsOkForMatchingStatusAndNoTextConstraints(): void
+    {
+        $response = new FakeResponse(statusCode: 200, body: 'anything');
+
+        $result = (new HttpContentCheckService(
+            httpClient: new RecordingHttpClient(response: $response),
+            requestFactory: new FakeRequestFactory(),
+        ))->checkFromResponse(response: $response);
+
+        $this->assertSame(CheckStatus::OK, $result->status);
+        $this->assertSame(200, $result->httpStatus);
+    }
+
+    #[Test]
+    public function checkFromResponseFindsRequiredText(): void
+    {
+        $response = new FakeResponse(statusCode: 200, body: 'hello world');
+
+        $result = (new HttpContentCheckService(
+            httpClient: new RecordingHttpClient(response: $response),
+            requestFactory: new FakeRequestFactory(),
+        ))->checkFromResponse(response: $response, requiredText: 'hello');
+
+        $this->assertSame(CheckStatus::OK, $result->status);
+        $this->assertTrue($result->requiredTextFound);
+    }
+
+    #[Test]
+    public function checkFromResponseDetectsForbiddenText(): void
+    {
+        $response = new FakeResponse(statusCode: 200, body: 'blocked keyword');
+
+        $result = (new HttpContentCheckService(
+            httpClient: new RecordingHttpClient(response: $response),
+            requestFactory: new FakeRequestFactory(),
+        ))->checkFromResponse(response: $response, forbiddenText: 'keyword');
+
+        $this->assertSame(CheckStatus::CRITICAL, $result->status);
+        $this->assertTrue($result->forbiddenTextFound);
+    }
+
+    #[Test]
+    public function checkFromResponseReturnsCriticalOnStatusMismatch(): void
+    {
+        $response = new FakeResponse(statusCode: 503, body: '');
+
+        $result = (new HttpContentCheckService(
+            httpClient: new RecordingHttpClient(response: $response),
+            requestFactory: new FakeRequestFactory(),
+        ))->checkFromResponse(response: $response, expectedStatus: 200);
+
+        $this->assertSame(CheckStatus::CRITICAL, $result->status);
+        $this->assertSame(503, $result->httpStatus);
+    }
+
+    #[Test]
+    public function checkFromResponseThrowsOnInvalidExpectedStatus(): void
+    {
+        $this->expectException(exception: InvalidArgumentException::class);
+        $this->expectExceptionMessage(message: 'Invalid HTTP status 99');
+
+        (new HttpContentCheckService(
+            httpClient: new RecordingHttpClient(),
+            requestFactory: new FakeRequestFactory(),
+        ))->checkFromResponse(response: new FakeResponse(), expectedStatus: 99);
+    }
+
     private function service(FakeResponse $response): HttpContentCheckService
     {
         return new HttpContentCheckService(
