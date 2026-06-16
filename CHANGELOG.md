@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 1.1.0 — 2026-06-16
+
 - `DomainMonitor` orchestrator: runs all configured services in one call and assembles a `DomainHealthReport`. Services are optional (null = disabled). Failed checks are caught, logged via PSR-3, and omitted from the report.
 - `DomainMonitorOptions` VO for orchestrator configuration (port, timeout, HTTP method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText).
 - `HttpProbeService::probeWithResponse()` — returns `HttpProbeWithResponse` DTO containing both `ProbeResult` and the raw PSR-7 `ResponseInterface` for response reuse.
