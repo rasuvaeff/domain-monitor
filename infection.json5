@@ -16,6 +16,9 @@
             "Rasuvaeff\\DomainMonitor\\DnsService::defaultResolver",
             "Rasuvaeff\\DomainMonitor\\SslCertificateService::openStream",
             "Rasuvaeff\\DomainMonitor\\SslCertificateService::check"
-        ]
+        ],
+        // Equivalent mutant: idn_to_ascii already lowercases, making strtolower redundant.
+        // Also causes infection formatter crash ("Incorrectly nested style tag").
+        "UnwrapStrToLower": { "ignore": ["Rasuvaeff\\DomainMonitor\\HostNormalizer::normalizeAsciiHost"] }
     }
 }
