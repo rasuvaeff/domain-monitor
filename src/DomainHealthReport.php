@@ -69,10 +69,6 @@ final readonly class DomainHealthReport
             $statuses[] = $this->sitemap->status;
         }
 
-        if ($statuses === []) {
-            return CheckStatus::UNKNOWN;
-        }
-
         $worstStatus = CheckStatus::UNKNOWN;
 
         foreach ($statuses as $status) {

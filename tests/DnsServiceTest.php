@@ -79,16 +79,28 @@ final class DnsServiceTest
 
     public function returnsEmptyRecordsWhenResolverReturnsFalse(): void
     {
-        $resolver = static function (string $host, int $type): false {
-            unset($host, $type);
+        $warnings = [];
+        $prevHandler = \set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+            $warnings[] = $errstr;
 
-            return false;
-        };
+            return true;
+        });
 
-        $records = (new DnsService(resolver: $resolver))->check(host: 'example.com');
+        try {
+            $resolver = static function (string $host, int $type): false {
+                unset($host, $type);
 
-        Assert::same($records->a, []);
-        Assert::same($records->mx, []);
+                return false;
+            };
+
+            $records = (new DnsService(resolver: $resolver))->check(host: 'example.com');
+
+            Assert::same($records->a, []);
+            Assert::same($records->mx, []);
+            Assert::same($warnings, []);
+        } finally {
+            \set_error_handler($prevHandler);
+        }
     }
 
     public function skipsRecordWithNonStringTypeButPresent(): void
@@ -103,16 +115,28 @@ final class DnsServiceTest
 
     public function returnsEmptyRecordsWhenResolverThrows(): void
     {
-        $resolver = static function (string $host, int $type): array {
-            unset($host, $type);
+        $warnings = [];
+        $prevHandler = \set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+            $warnings[] = $errstr;
 
-            throw new \RuntimeException(message: 'DNS failure');
-        };
+            return true;
+        });
 
-        $records = (new DnsService(resolver: $resolver))->check(host: 'example.com');
+        try {
+            $resolver = static function (string $host, int $type): array {
+                unset($host, $type);
 
-        Assert::same($records->a, []);
-        Assert::same($records->ns, []);
+                throw new \RuntimeException(message: 'DNS failure');
+            };
+
+            $records = (new DnsService(resolver: $resolver))->check(host: 'example.com');
+
+            Assert::same($records->a, []);
+            Assert::same($records->ns, []);
+            Assert::same($warnings, []);
+        } finally {
+            \set_error_handler($prevHandler);
+        }
     }
 
     /**

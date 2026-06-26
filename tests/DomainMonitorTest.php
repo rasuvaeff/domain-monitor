@@ -165,14 +165,18 @@ final class DomainMonitorTest
 
         Assert::notNull($report->probe);
         Assert::same($report->probe->status, 0);
+        Assert::true($report->probe->totalTime >= 0.0);
+        Assert::true($report->probe->totalTime < 1.0);
         Assert::same($report->getStatus(), CheckStatus::CRITICAL);
         Assert::null($report->securityHeaders);
 
+        Assert::count($logger->records, 1);
         $probeLog = $logger->records[0];
         Assert::same($probeLog['level'], 'warning');
         Assert::same($probeLog['message'], 'HTTP probe failed');
         Assert::same($probeLog['context']['host'], 'example.com');
         Assert::same($probeLog['context']['check'], 'probe');
+        Assert::same($probeLog['context']['error'], 'connection refused');
     }
 
     public function serviceExceptionIsCaughtAndOmittedFromReport(): void
@@ -198,6 +202,7 @@ final class DomainMonitorTest
 
         Assert::count($logger->records, 1);
         Assert::same($logger->records[0]['message'], 'port check failed: timeout');
+        Assert::same($logger->records[0]['context']['host'], 'example.com');
         Assert::same($logger->records[0]['context']['check'], 'port');
     }
 

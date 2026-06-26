@@ -230,7 +230,7 @@ final class DomainHealthReportTest
         Assert::same($report->getStatus(), CheckStatus::CRITICAL);
     }
 
-    public function mapsWhoisStatusAsWarningAtExactlyZeroDays(): void
+    public function mapsWhoisStatusAsWarningWithin30Days(): void
     {
         $report = new DomainHealthReport(
             host: 'example.com',
@@ -250,6 +250,19 @@ final class DomainHealthReportTest
             whois: new TldInfo(
                 domain: 'example.com',
                 expirationDate: new DateTimeImmutable(datetime: '+30 days'),
+            ),
+        );
+
+        Assert::same($report->getStatus(), CheckStatus::WARNING);
+    }
+
+    public function mapsWhoisStatusAsWarningAtExactlyZeroDays(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            whois: new TldInfo(
+                domain: 'example.com',
+                expirationDate: new DateTimeImmutable(datetime: 'now'),
             ),
         );
 

@@ -46,30 +46,21 @@ final readonly class DnsService
         $cname = [];
 
         foreach ($records as $record) {
-            if (!isset($record['type']) || !\is_string($record['type'])) {
+            $type = $record['type'] ?? null;
+
+            if (!\is_string($type)) {
                 continue;
             }
 
-            switch ($record['type']) {
-                case 'A':
-                    $this->pushRecord(target: $a, value: $record['ip'] ?? null);
-                    break;
-                case 'AAAA':
-                    $this->pushRecord(target: $aaaa, value: $record['ipv6'] ?? null);
-                    break;
-                case 'MX':
-                    $this->pushRecord(target: $mx, value: $record['target'] ?? null);
-                    break;
-                case 'NS':
-                    $this->pushRecord(target: $ns, value: $record['target'] ?? null);
-                    break;
-                case 'TXT':
-                    $this->pushRecord(target: $txt, value: $record['txt'] ?? null);
-                    break;
-                case 'CNAME':
-                    $this->pushRecord(target: $cname, value: $record['target'] ?? null);
-                    break;
-            }
+            match ($type) {
+                'A' => $this->pushRecord(target: $a, value: $record['ip'] ?? null),
+                'AAAA' => $this->pushRecord(target: $aaaa, value: $record['ipv6'] ?? null),
+                'MX' => $this->pushRecord(target: $mx, value: $record['target'] ?? null),
+                'NS' => $this->pushRecord(target: $ns, value: $record['target'] ?? null),
+                'TXT' => $this->pushRecord(target: $txt, value: $record['txt'] ?? null),
+                'CNAME' => $this->pushRecord(target: $cname, value: $record['target'] ?? null),
+                default => null,
+            };
         }
 
         return new DnsRecords(
