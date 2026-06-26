@@ -6,25 +6,27 @@ namespace Rasuvaeff\DomainMonitor\Tests\Integration;
 
 use GuzzleHttp\Client as GuzzleClient;
 use Nyholm\Psr7\Factory\Psr17Factory;
-use PHPUnit\Framework\Attributes\CoversNothing;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\SitemapService;
+use Testo\Assert;
+use Testo\Codecov\CoversNothing;
+use Testo\Lifecycle\BeforeTest;
+use Testo\Test;
 
+#[Test]
 #[CoversNothing]
-final class SitemapIntegrationTest extends TestCase
+final class SitemapIntegrationTest
 {
     private ClientInterface $httpClient;
     private RequestFactoryInterface $requestFactory;
 
-    #[\Override]
-    protected function setUp(): void
+    #[BeforeTest]
+    public function setUp(): void
     {
         if (\getenv('DOMAIN_MONITOR_NET') === false) {
-            $this->markTestSkipped(message: 'Set DOMAIN_MONITOR_NET=1 to run network integration tests');
+            return;
         }
 
         $psr17Factory = new Psr17Factory();
@@ -32,15 +34,18 @@ final class SitemapIntegrationTest extends TestCase
         $this->httpClient = new GuzzleClient();
     }
 
-    #[Test]
     public function checksSitemapAvailability(): void
     {
+        if (\getenv('DOMAIN_MONITOR_NET') === false) {
+            return;
+        }
+
         $service = new SitemapService(httpClient: $this->httpClient, requestFactory: $this->requestFactory);
         $result = $service->check(sitemapUrl: 'https://www.example.com/sitemap.xml');
 
-        $this->assertSame(CheckStatus::OK, $result->status);
-        $this->assertTrue($result->exists);
-        $this->assertSame(200, $result->httpStatus);
-        $this->assertGreaterThanOrEqual(0, $result->urlCount);
+        Assert::same($result->status, CheckStatus::OK);
+        Assert::true($result->exists);
+        Assert::same($result->httpStatus, 200);
+        Assert::true($result->urlCount >= 0);
     }
 }

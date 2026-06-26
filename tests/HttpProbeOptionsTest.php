@@ -5,26 +5,25 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\HttpProbeOptions;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(HttpProbeOptions::class)]
-final class HttpProbeOptionsTest extends TestCase
+#[Test]
+#[Covers(HttpProbeOptions::class)]
+final class HttpProbeOptionsTest
 {
-    #[Test]
     public function normalizesDefaultsAndMethod(): void
     {
         $options = new HttpProbeOptions(method: 'head');
 
-        $this->assertSame('HEAD', $options->method);
-        $this->assertSame([], $options->headers);
-        $this->assertSame(5.0, $options->timeoutSeconds);
-        $this->assertSame('rasuvaeff/domain-monitor', $options->userAgent);
+        Assert::same($options->method, 'HEAD');
+        Assert::same($options->headers, []);
+        Assert::same($options->timeoutSeconds, 5.0);
+        Assert::same($options->userAgent, 'rasuvaeff/domain-monitor');
     }
 
-    #[Test]
     public function preservesCustomValues(): void
     {
         $options = new HttpProbeOptions(
@@ -34,45 +33,49 @@ final class HttpProbeOptionsTest extends TestCase
             userAgent: 'custom/2.0',
         );
 
-        $this->assertSame('POST', $options->method);
-        $this->assertSame(['Accept' => 'application/json'], $options->headers);
-        $this->assertSame(12.5, $options->timeoutSeconds);
-        $this->assertSame('custom/2.0', $options->userAgent);
+        Assert::same($options->method, 'POST');
+        Assert::same($options->headers, ['Accept' => 'application/json']);
+        Assert::same($options->timeoutSeconds, 12.5);
+        Assert::same($options->userAgent, 'custom/2.0');
     }
 
-    #[Test]
     public function throwsOnEmptyHeaderName(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Header names must be non-empty strings');
-
-        new HttpProbeOptions(headers: ['' => 'value']);
+        try {
+            new HttpProbeOptions(headers: ['' => 'value']);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Header names must be non-empty strings');
+        }
     }
 
-    #[Test]
     public function throwsOnEmptyUserAgent(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'User-Agent must not be empty');
-
-        new HttpProbeOptions(userAgent: '');
+        try {
+            new HttpProbeOptions(userAgent: '');
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('User-Agent must not be empty');
+        }
     }
 
-    #[Test]
     public function throwsOnInvalidMethod(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Invalid HTTP method "GET1"');
-
-        new HttpProbeOptions(method: 'GET1');
+        try {
+            new HttpProbeOptions(method: 'GET1');
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Invalid HTTP method "GET1"');
+        }
     }
 
-    #[Test]
     public function throwsOnInvalidTimeout(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Timeout must be greater than 0');
-
-        new HttpProbeOptions(timeoutSeconds: 0.0);
+        try {
+            new HttpProbeOptions(timeoutSeconds: 0.0);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Timeout must be greater than 0');
+        }
     }
 }

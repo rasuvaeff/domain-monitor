@@ -4,20 +4,20 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(CheckStatus::class)]
-final class CheckStatusTest extends TestCase
+#[Test]
+#[Covers(CheckStatus::class)]
+final class CheckStatusTest
 {
-    #[Test]
     public function hasExpectedValues(): void
     {
-        $this->assertSame('ok', CheckStatus::OK->value);
-        $this->assertSame('warning', CheckStatus::WARNING->value);
-        $this->assertSame('critical', CheckStatus::CRITICAL->value);
-        $this->assertSame('unknown', CheckStatus::UNKNOWN->value);
+        Assert::same(CheckStatus::OK->value, 'ok');
+        Assert::same(CheckStatus::WARNING->value, 'warning');
+        Assert::same(CheckStatus::CRITICAL->value, 'critical');
+        Assert::same(CheckStatus::UNKNOWN->value, 'unknown');
     }
 }

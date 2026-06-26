@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\RobotsTxtCheck;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(RobotsTxtCheck::class)]
-final class RobotsTxtCheckTest extends TestCase
+#[Test]
+#[Covers(RobotsTxtCheck::class)]
+final class RobotsTxtCheckTest
 {
-    #[Test]
     public function preservesFields(): void
     {
         $check = new RobotsTxtCheck(
@@ -24,42 +24,40 @@ final class RobotsTxtCheckTest extends TestCase
             sitemaps: ['https://example.com/sitemap.xml'],
         );
 
-        $this->assertSame(CheckStatus::OK, $check->status);
-        $this->assertSame(200, $check->httpStatus);
-        $this->assertTrue($check->exists);
-        $this->assertSame(['https://example.com/sitemap.xml'], $check->sitemaps);
+        Assert::same($check->status, CheckStatus::OK);
+        Assert::same($check->httpStatus, 200);
+        Assert::true($check->exists);
+        Assert::same($check->sitemaps, ['https://example.com/sitemap.xml']);
     }
 
-    #[Test]
     public function throwsOnInvalidStatus(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Invalid HTTP status 42');
-
-        new RobotsTxtCheck(status: CheckStatus::UNKNOWN, httpStatus: 42, exists: false, sitemaps: []);
+        try {
+            new RobotsTxtCheck(status: CheckStatus::UNKNOWN, httpStatus: 42, exists: false, sitemaps: []);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Invalid HTTP status 42');
+        }
     }
 
-    #[Test]
     public function acceptsHttpStatusZero(): void
     {
         $check = new RobotsTxtCheck(status: CheckStatus::UNKNOWN, httpStatus: 0, exists: false, sitemaps: []);
 
-        $this->assertSame(0, $check->httpStatus);
+        Assert::same($check->httpStatus, 0);
     }
 
-    #[Test]
     public function acceptsBoundaryHttpStatus100(): void
     {
         $check = new RobotsTxtCheck(status: CheckStatus::OK, httpStatus: 100, exists: false, sitemaps: []);
 
-        $this->assertSame(100, $check->httpStatus);
+        Assert::same($check->httpStatus, 100);
     }
 
-    #[Test]
     public function acceptsBoundaryHttpStatus599(): void
     {
         $check = new RobotsTxtCheck(status: CheckStatus::OK, httpStatus: 599, exists: false, sitemaps: []);
 
-        $this->assertSame(599, $check->httpStatus);
+        Assert::same($check->httpStatus, 599);
     }
 }
