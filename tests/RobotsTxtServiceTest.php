@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\HttpProbeOptions;
 use Rasuvaeff\DomainMonitor\RobotsTxtService;
@@ -16,11 +13,14 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(RobotsTxtService::class)]
-final class RobotsTxtServiceTest extends TestCase
+#[Test]
+#[Covers(RobotsTxtService::class)]
+final class RobotsTxtServiceTest
 {
-    #[Test]
     public function extractsMultipleSitemapsCaseInsensitively(): void
     {
         $body = "User-agent: *\nDisallow: /private\n"
@@ -31,16 +31,15 @@ final class RobotsTxtServiceTest extends TestCase
         $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(baseUrl: 'https://example.com');
 
-        $this->assertSame(CheckStatus::OK, $result->status);
-        $this->assertSame(200, $result->httpStatus);
-        $this->assertTrue($result->exists);
-        $this->assertSame(
-            ['https://example.com/sitemap.xml', 'https://example.com/news.xml'],
+        Assert::same($result->status, CheckStatus::OK);
+        Assert::same($result->httpStatus, 200);
+        Assert::true($result->exists);
+        Assert::same(
             $result->sitemaps,
+            ['https://example.com/sitemap.xml', 'https://example.com/news.xml'],
         );
     }
 
-    #[Test]
     public function doesNotMatchSitemapLineWithoutLeadingWhitespaceOrStart(): void
     {
         $body = "xSitemap: https://example.com/fake.xml\nSitemap: https://example.com/real.xml\n";
@@ -49,10 +48,9 @@ final class RobotsTxtServiceTest extends TestCase
         $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(baseUrl: 'https://example.com');
 
-        $this->assertSame(['https://example.com/real.xml'], $result->sitemaps);
+        Assert::same($result->sitemaps, ['https://example.com/real.xml']);
     }
 
-    #[Test]
     public function extractsUnicodeSitemapUrl(): void
     {
         $body = "Sitemap: https://example.com/sitemap-ü.xml\n";
@@ -61,10 +59,9 @@ final class RobotsTxtServiceTest extends TestCase
         $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(baseUrl: 'https://example.com');
 
-        $this->assertSame(['https://example.com/sitemap-ü.xml'], $result->sitemaps);
+        Assert::same($result->sitemaps, ['https://example.com/sitemap-ü.xml']);
     }
 
-    #[Test]
     public function returnsOkWithoutSitemapsWhenNoneListed(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: "User-agent: *\nDisallow:\n"));
@@ -72,11 +69,10 @@ final class RobotsTxtServiceTest extends TestCase
         $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(baseUrl: 'https://example.com');
 
-        $this->assertSame(CheckStatus::OK, $result->status);
-        $this->assertSame([], $result->sitemaps);
+        Assert::same($result->status, CheckStatus::OK);
+        Assert::same($result->sitemaps, []);
     }
 
-    #[Test]
     public function returnsWarningForMissingRobotsTxt(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 404, body: 'Sitemap: https://ignored.example/s.xml'));
@@ -84,13 +80,12 @@ final class RobotsTxtServiceTest extends TestCase
         $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(baseUrl: 'https://example.com');
 
-        $this->assertSame(CheckStatus::WARNING, $result->status);
-        $this->assertSame(404, $result->httpStatus);
-        $this->assertFalse($result->exists);
-        $this->assertSame([], $result->sitemaps);
+        Assert::same($result->status, CheckStatus::WARNING);
+        Assert::same($result->httpStatus, 404);
+        Assert::false($result->exists);
+        Assert::same($result->sitemaps, []);
     }
 
-    #[Test]
     public function returnsUnknownOnNetworkFailure(): void
     {
         $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'down'));
@@ -99,16 +94,15 @@ final class RobotsTxtServiceTest extends TestCase
         $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory(), logger: $logger))
             ->check(baseUrl: 'https://example.com');
 
-        $this->assertSame(CheckStatus::UNKNOWN, $result->status);
-        $this->assertSame(0, $result->httpStatus);
-        $this->assertFalse($result->exists);
-        $this->assertSame([], $result->sitemaps);
-        $this->assertCount(1, $logger->records);
-        $this->assertSame('down', $logger->records[0]['message']);
-        $this->assertSame(['url' => 'https://example.com/robots.txt'], $logger->records[0]['context']);
+        Assert::same($result->status, CheckStatus::UNKNOWN);
+        Assert::same($result->httpStatus, 0);
+        Assert::false($result->exists);
+        Assert::same($result->sitemaps, []);
+        Assert::count($logger->records, 1);
+        Assert::same($logger->records[0]['message'], 'down');
+        Assert::same($logger->records[0]['context'], ['url' => 'https://example.com/robots.txt']);
     }
 
-    #[Test]
     public function requestsRobotsTxtAtOriginRootPreservingPort(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: ''));
@@ -116,11 +110,10 @@ final class RobotsTxtServiceTest extends TestCase
         (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(baseUrl: 'https://example.com:8443/deep/path?x=1');
 
-        $this->assertInstanceOf(FakeRequest::class, $client->lastRequest);
-        $this->assertSame('https://example.com:8443/robots.txt', $client->lastRequest->getUriString());
+        Assert::instanceOf($client->lastRequest, FakeRequest::class);
+        Assert::same($client->lastRequest->getUriString(), 'https://example.com:8443/robots.txt');
     }
 
-    #[Test]
     public function appliesOptionsMethodHeadersAndDefaultUserAgent(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: ''));
@@ -129,13 +122,12 @@ final class RobotsTxtServiceTest extends TestCase
         (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(baseUrl: 'https://example.com', options: $options);
 
-        $this->assertNotNull($client->lastRequest);
-        $this->assertSame('HEAD', $client->lastRequest->getMethod());
-        $this->assertSame('secret', $client->lastRequest->getHeaderLine(name: 'X-Token'));
-        $this->assertSame('probe/1.0', $client->lastRequest->getHeaderLine(name: 'User-Agent'));
+        Assert::notNull($client->lastRequest);
+        Assert::same($client->lastRequest->getMethod(), 'HEAD');
+        Assert::same($client->lastRequest->getHeaderLine(name: 'X-Token'), 'secret');
+        Assert::same($client->lastRequest->getHeaderLine(name: 'User-Agent'), 'probe/1.0');
     }
 
-    #[Test]
     public function keepsCustomUserAgentHeaderFromOptions(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: ''));
@@ -144,7 +136,7 @@ final class RobotsTxtServiceTest extends TestCase
         (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(baseUrl: 'https://example.com', options: $options);
 
-        $this->assertNotNull($client->lastRequest);
-        $this->assertSame('custom-agent', $client->lastRequest->getHeaderLine(name: 'User-Agent'));
+        Assert::notNull($client->lastRequest);
+        Assert::same($client->lastRequest->getHeaderLine(name: 'User-Agent'), 'custom-agent');
     }
 }

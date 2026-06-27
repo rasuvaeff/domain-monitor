@@ -5,28 +5,29 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\HostNormalizer;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
+use Testo\Lifecycle\BeforeTest;
+use Testo\Test;
 
-#[CoversClass(HostNormalizer::class)]
-final class HostNormalizerTest extends TestCase
+#[Test]
+#[Covers(HostNormalizer::class)]
+final class HostNormalizerTest
 {
     private HostNormalizer $normalizer;
 
-    #[\Override]
-    protected function setUp(): void
+    #[BeforeTest]
+    public function setUp(): void
     {
         $this->normalizer = new HostNormalizer();
     }
 
-    #[Test]
     #[DataProvider('hostProvider')]
     public function normalizesHost(string $input, string $expected): void
     {
-        $this->assertSame($expected, $this->normalizer->normalizeHost(hostOrUrl: $input));
+        Assert::same($this->normalizer->normalizeHost(hostOrUrl: $input), $expected);
     }
 
     /**
@@ -46,14 +47,15 @@ final class HostNormalizerTest extends TestCase
         yield 'leading tabs are trimmed' => ["\texample.com\t", 'example.com'];
     }
 
-    #[Test]
     #[DataProvider('invalidHostProvider')]
     public function throwsOnInvalidHost(string $value, string $expectedMessage): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: $expectedMessage);
-
-        $this->normalizer->normalizeHost(hostOrUrl: $value);
+        try {
+            $this->normalizer->normalizeHost(hostOrUrl: $value);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains($expectedMessage);
+        }
     }
 
     /**
@@ -69,45 +71,41 @@ final class HostNormalizerTest extends TestCase
         yield 'scheme without host' => ['http://', 'Invalid host "http://"'];
     }
 
-    #[Test]
     public function normalizesIdnWhenIntlIsAvailable(): void
     {
         if (!\function_exists('idn_to_ascii')) {
-            $this->markTestSkipped(message: 'ext-intl is not available');
+            return;
         }
 
-        $this->assertSame('xn--e1aybc.xn--p1ai', $this->normalizer->normalizeHost(hostOrUrl: 'тест.рф'));
+        Assert::same($this->normalizer->normalizeHost(hostOrUrl: 'тест.рф'), 'xn--e1aybc.xn--p1ai');
     }
 
-    #[Test]
     public function normalizesIdnUppercaseWhenIntlIsAvailable(): void
     {
         if (!\function_exists('idn_to_ascii')) {
-            $this->markTestSkipped(message: 'ext-intl is not available');
+            return;
         }
 
         $result = $this->normalizer->normalizeHost(hostOrUrl: 'ТЕСТ.РФ');
 
-        $this->assertSame($result, \strtolower($result));
+        Assert::same(\strtolower($result), $result);
     }
 
-    #[Test]
     public function normalizesIdnHostToExactLowercase(): void
     {
         if (!\function_exists('idn_to_ascii')) {
-            $this->markTestSkipped(message: 'ext-intl is not available');
+            return;
         }
 
         $result = $this->normalizer->normalizeHost(hostOrUrl: 'Тест.рф');
 
-        $this->assertSame(\strtolower($result), $result);
+        Assert::same(\strtolower($result), $result);
     }
 
-    #[Test]
     #[DataProvider('urlProvider')]
     public function normalizesUrl(string $input, string $expected): void
     {
-        $this->assertSame($expected, $this->normalizer->normalizeUrl(url: $input));
+        Assert::same($this->normalizer->normalizeUrl(url: $input), $expected);
     }
 
     /**
@@ -125,14 +123,15 @@ final class HostNormalizerTest extends TestCase
         yield 'user without password' => ['https://user@example.com/p', 'https://user@example.com/p'];
     }
 
-    #[Test]
     #[DataProvider('invalidUrlProvider')]
     public function throwsOnInvalidUrl(string $value, string $expectedMessage): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: $expectedMessage);
-
-        $this->normalizer->normalizeUrl(url: $value);
+        try {
+            $this->normalizer->normalizeUrl(url: $value);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains($expectedMessage);
+        }
     }
 
     /**

@@ -5,9 +5,6 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\DnsService;
 use Rasuvaeff\DomainMonitor\DomainHealthReport;
@@ -25,48 +22,50 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(DomainMonitor::class)]
-final class DomainMonitorTest extends TestCase
+#[Test]
+#[Covers(DomainMonitor::class)]
+final class DomainMonitorTest
 {
-    #[Test]
     public function returnsReportWithAllNullsWhenNoServicesConfigured(): void
     {
         $report = (new DomainMonitor())->check(host: 'example.com');
 
-        $this->assertSame('example.com', $report->host);
-        $this->assertNull($report->probe);
-        $this->assertNull($report->ssl);
-        $this->assertNull($report->whois);
-        $this->assertNull($report->dns);
-        $this->assertNull($report->content);
-        $this->assertNull($report->port);
-        $this->assertNull($report->securityHeaders);
-        $this->assertNull($report->robotsTxt);
-        $this->assertNull($report->sitemap);
-        $this->assertSame(CheckStatus::UNKNOWN, $report->getStatus());
+        Assert::same($report->host, 'example.com');
+        Assert::null($report->probe);
+        Assert::null($report->ssl);
+        Assert::null($report->whois);
+        Assert::null($report->dns);
+        Assert::null($report->content);
+        Assert::null($report->port);
+        Assert::null($report->securityHeaders);
+        Assert::null($report->robotsTxt);
+        Assert::null($report->sitemap);
+        Assert::same($report->getStatus(), CheckStatus::UNKNOWN);
     }
 
-    #[Test]
     public function normalizesHostBeforeRunningChecks(): void
     {
         $report = (new DomainMonitor())->check(host: 'https://EXAMPLE.com/path?query=1');
 
-        $this->assertSame('example.com', $report->host);
+        Assert::same($report->host, 'example.com');
     }
 
-    #[Test]
     public function throwsWhenSecurityHeadersConfiguredWithoutHttpProbe(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(
-            message: 'SecurityHeadersService requires HttpProbeService to obtain an HTTP response',
-        );
-
-        new DomainMonitor(securityHeaders: new SecurityHeadersService());
+        try {
+            new DomainMonitor(securityHeaders: new SecurityHeadersService());
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains(
+                'SecurityHeadersService requires HttpProbeService to obtain an HTTP response',
+            );
+        }
     }
 
-    #[Test]
     public function probeRunsAndReturnsStatusInReport(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200));
@@ -76,13 +75,12 @@ final class DomainMonitorTest extends TestCase
 
         $report = $monitor->check(host: 'example.com');
 
-        $this->assertNotNull($report->probe);
-        $this->assertSame(200, $report->probe->status);
-        $this->assertInstanceOf(FakeRequest::class, $client->lastRequest);
-        $this->assertSame('https://example.com/', $client->lastRequest->getUriString());
+        Assert::notNull($report->probe);
+        Assert::same($report->probe->status, 200);
+        Assert::instanceOf($client->lastRequest, FakeRequest::class);
+        Assert::same($client->lastRequest->getUriString(), 'https://example.com/');
     }
 
-    #[Test]
     public function reusesProbeResponseForSecurityHeaders(): void
     {
         $response = new FakeResponse(
@@ -104,15 +102,14 @@ final class DomainMonitorTest extends TestCase
 
         $report = $monitor->check(host: 'example.com');
 
-        $this->assertNotNull($report->securityHeaders);
-        $this->assertTrue($report->securityHeaders->hasHsts);
-        $this->assertTrue($report->securityHeaders->hasContentSecurityPolicy);
-        $this->assertTrue($report->securityHeaders->hasXFrameOptions);
-        $this->assertTrue($report->securityHeaders->hasXContentTypeOptions);
-        $this->assertSame(CheckStatus::OK, $report->securityHeaders->status);
+        Assert::notNull($report->securityHeaders);
+        Assert::true($report->securityHeaders->hasHsts);
+        Assert::true($report->securityHeaders->hasContentSecurityPolicy);
+        Assert::true($report->securityHeaders->hasXFrameOptions);
+        Assert::true($report->securityHeaders->hasXContentTypeOptions);
+        Assert::same($report->securityHeaders->status, CheckStatus::OK);
     }
 
-    #[Test]
     public function reusesProbeResponseForContentCheck(): void
     {
         $response = new FakeResponse(statusCode: 200, body: 'hello world');
@@ -133,12 +130,11 @@ final class DomainMonitorTest extends TestCase
             options: new DomainMonitorOptions(requiredText: 'hello'),
         );
 
-        $this->assertNotNull($report->content);
-        $this->assertTrue($report->content->requiredTextFound);
-        $this->assertSame(CheckStatus::OK, $report->content->status);
+        Assert::notNull($report->content);
+        Assert::true($report->content->requiredTextFound);
+        Assert::same($report->content->status, CheckStatus::OK);
     }
 
-    #[Test]
     public function contentMakesOwnRequestWhenProbeNotConfigured(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: 'ok'));
@@ -148,13 +144,12 @@ final class DomainMonitorTest extends TestCase
 
         $report = $monitor->check(host: 'example.com');
 
-        $this->assertNotNull($report->content);
-        $this->assertSame(CheckStatus::OK, $report->content->status);
-        $this->assertNotNull($client->lastRequest);
-        $this->assertSame('https://example.com/', $client->lastRequest->getUriString());
+        Assert::notNull($report->content);
+        Assert::same($report->content->status, CheckStatus::OK);
+        Assert::notNull($client->lastRequest);
+        Assert::same($client->lastRequest->getUriString(), 'https://example.com/');
     }
 
-    #[Test]
     public function probeFailureSetsStatusZeroAndOmitsSecurityHeaders(): void
     {
         $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'connection refused'));
@@ -168,19 +163,22 @@ final class DomainMonitorTest extends TestCase
 
         $report = $monitor->check(host: 'example.com');
 
-        $this->assertNotNull($report->probe);
-        $this->assertSame(0, $report->probe->status);
-        $this->assertSame(CheckStatus::CRITICAL, $report->getStatus());
-        $this->assertNull($report->securityHeaders);
+        Assert::notNull($report->probe);
+        Assert::same($report->probe->status, 0);
+        Assert::true($report->probe->totalTime >= 0.0);
+        Assert::true($report->probe->totalTime < 1.0);
+        Assert::same($report->getStatus(), CheckStatus::CRITICAL);
+        Assert::null($report->securityHeaders);
 
+        Assert::count($logger->records, 1);
         $probeLog = $logger->records[0];
-        $this->assertSame('warning', $probeLog['level']);
-        $this->assertSame('HTTP probe failed', $probeLog['message']);
-        $this->assertSame('example.com', $probeLog['context']['host']);
-        $this->assertSame('probe', $probeLog['context']['check']);
+        Assert::same($probeLog['level'], 'warning');
+        Assert::same($probeLog['message'], 'HTTP probe failed');
+        Assert::same($probeLog['context']['host'], 'example.com');
+        Assert::same($probeLog['context']['check'], 'probe');
+        Assert::same($probeLog['context']['error'], 'connection refused');
     }
 
-    #[Test]
     public function serviceExceptionIsCaughtAndOmittedFromReport(): void
     {
         $monitor = new DomainMonitor(
@@ -189,10 +187,9 @@ final class DomainMonitorTest extends TestCase
 
         $report = $monitor->check(host: 'example.com');
 
-        $this->assertNull($report->port);
+        Assert::null($report->port);
     }
 
-    #[Test]
     public function serviceExceptionIsLoggedWithCheckName(): void
     {
         $logger = new RecordingLogger();
@@ -203,12 +200,12 @@ final class DomainMonitorTest extends TestCase
 
         $monitor->check(host: 'example.com');
 
-        $this->assertCount(1, $logger->records);
-        $this->assertSame('port check failed: timeout', $logger->records[0]['message']);
-        $this->assertSame('port', $logger->records[0]['context']['check']);
+        Assert::count($logger->records, 1);
+        Assert::same($logger->records[0]['message'], 'port check failed: timeout');
+        Assert::same($logger->records[0]['context']['host'], 'example.com');
+        Assert::same($logger->records[0]['context']['check'], 'port');
     }
 
-    #[Test]
     public function passesPortAndTimeoutOptionsToPortService(): void
     {
         $connectorArgs = null;
@@ -227,13 +224,12 @@ final class DomainMonitorTest extends TestCase
             options: new DomainMonitorOptions(port: 8443, timeoutSeconds: 15.0),
         );
 
-        $this->assertSame(
-            ['host' => 'example.com', 'port' => 8443, 'timeout' => 15.0],
+        Assert::same(
             $connectorArgs,
+            ['host' => 'example.com', 'port' => 8443, 'timeout' => 15.0],
         );
     }
 
-    #[Test]
     public function passesCustomResolverToDnsService(): void
     {
         $resolverHost = null;
@@ -252,23 +248,21 @@ final class DomainMonitorTest extends TestCase
 
         $report = $monitor->check(host: 'example.com');
 
-        $this->assertSame('example.com', $resolverHost);
-        $this->assertNotNull($report->dns);
-        $this->assertSame(['1.2.3.4'], $report->dns->a);
-        $this->assertSame(['ns1.example.com'], $report->dns->ns);
+        Assert::same($resolverHost, 'example.com');
+        Assert::notNull($report->dns);
+        Assert::same($report->dns->a, ['1.2.3.4']);
+        Assert::same($report->dns->ns, ['ns1.example.com']);
     }
 
-    #[Test]
     public function returnsProperDomainHealthReportInstance(): void
     {
         $monitor = new DomainMonitor();
 
         $report = $monitor->check(host: 'example.com');
 
-        $this->assertInstanceOf(DomainHealthReport::class, $report);
+        Assert::instanceOf($report, DomainHealthReport::class);
     }
 
-    #[Test]
     public function runsAllControllableServicesAndAssemblesReport(): void
     {
         $probeResponse = new FakeResponse(
@@ -299,16 +293,16 @@ final class DomainMonitorTest extends TestCase
 
         $report = $monitor->check(host: 'example.com');
 
-        $this->assertSame(200, $report->probe?->status);
-        $this->assertTrue($report->securityHeaders?->hasHsts);
-        $this->assertSame(CheckStatus::OK, $report->content?->status);
-        $this->assertTrue($report->robotsTxt?->exists);
-        $this->assertSame(['https://example.com/sitemap.xml'], $report->robotsTxt?->sitemaps);
-        $this->assertTrue($report->sitemap?->exists);
-        $this->assertSame(1, $report->sitemap?->urlCount);
-        $this->assertSame(['1.2.3.4'], $report->dns?->a);
-        $this->assertSame(CheckStatus::OK, $report->port?->status);
-        $this->assertSame(0.02, $report->port?->connectTime);
-        $this->assertSame(CheckStatus::OK, $report->getStatus());
+        Assert::same($report->probe?->status, 200);
+        Assert::true($report->securityHeaders?->hasHsts);
+        Assert::same($report->content?->status, CheckStatus::OK);
+        Assert::true($report->robotsTxt?->exists);
+        Assert::same($report->robotsTxt?->sitemaps, ['https://example.com/sitemap.xml']);
+        Assert::true($report->sitemap?->exists);
+        Assert::same($report->sitemap?->urlCount, 1);
+        Assert::same($report->dns?->a, ['1.2.3.4']);
+        Assert::same($report->port?->status, CheckStatus::OK);
+        Assert::same($report->port?->connectTime, 0.02);
+        Assert::same($report->getStatus(), CheckStatus::OK);
     }
 }

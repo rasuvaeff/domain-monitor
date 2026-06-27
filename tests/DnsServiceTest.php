@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use Closure;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\DnsService;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(DnsService::class)]
-final class DnsServiceTest extends TestCase
+#[Test]
+#[Covers(DnsService::class)]
+final class DnsServiceTest
 {
-    #[Test]
     public function mapsEachRecordTypeToItsFieldAndForwardsHostAndTypes(): void
     {
         $received = ['host' => '', 'type' => 0];
@@ -32,17 +32,16 @@ final class DnsServiceTest extends TestCase
 
         $records = (new DnsService(resolver: $resolver))->check(host: 'EXAMPLE.com');
 
-        $this->assertSame('example.com', $received['host']);
-        $this->assertSame(\DNS_A | \DNS_AAAA | \DNS_MX | \DNS_NS | \DNS_TXT | \DNS_CNAME, $received['type']);
-        $this->assertSame(['1.2.3.4'], $records->a);
-        $this->assertSame(['2001:db8::1'], $records->aaaa);
-        $this->assertSame(['mx.example.com'], $records->mx);
-        $this->assertSame(['ns1.example.com'], $records->ns);
-        $this->assertSame(['v=spf1'], $records->txt);
-        $this->assertSame(['alias.example.com'], $records->cname);
+        Assert::same($received['host'], 'example.com');
+        Assert::same($received['type'], \DNS_A | \DNS_AAAA | \DNS_MX | \DNS_NS | \DNS_TXT | \DNS_CNAME);
+        Assert::same($records->a, ['1.2.3.4']);
+        Assert::same($records->aaaa, ['2001:db8::1']);
+        Assert::same($records->mx, ['mx.example.com']);
+        Assert::same($records->ns, ['ns1.example.com']);
+        Assert::same($records->txt, ['v=spf1']);
+        Assert::same($records->cname, ['alias.example.com']);
     }
 
-    #[Test]
     public function deduplicatesRepeatedValues(): void
     {
         $records = (new DnsService(resolver: $this->resolver([
@@ -51,10 +50,9 @@ final class DnsServiceTest extends TestCase
             ['type' => 'A', 'ip' => '5.6.7.8'],
         ])))->check(host: 'example.com');
 
-        $this->assertSame(['1.2.3.4', '5.6.7.8'], $records->a);
+        Assert::same($records->a, ['1.2.3.4', '5.6.7.8']);
     }
 
-    #[Test]
     public function ignoresEmptyMissingAndNonStringValues(): void
     {
         $records = (new DnsService(resolver: $this->resolver([
@@ -64,10 +62,9 @@ final class DnsServiceTest extends TestCase
             ['type' => 'A', 'ip' => '9.9.9.9'],
         ])))->check(host: 'example.com');
 
-        $this->assertSame(['9.9.9.9'], $records->a);
+        Assert::same($records->a, ['9.9.9.9']);
     }
 
-    #[Test]
     public function skipsRecordsWithMissingNonStringOrUnknownType(): void
     {
         $records = (new DnsService(resolver: $this->resolver([
@@ -77,25 +74,35 @@ final class DnsServiceTest extends TestCase
             ['type' => 'A', 'ip' => '8.8.8.8'],
         ])))->check(host: 'example.com');
 
-        $this->assertSame(['8.8.8.8'], $records->a);
+        Assert::same($records->a, ['8.8.8.8']);
     }
 
-    #[Test]
     public function returnsEmptyRecordsWhenResolverReturnsFalse(): void
     {
-        $resolver = static function (string $host, int $type): false {
-            unset($host, $type);
+        $warnings = [];
+        $prevHandler = \set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+            $warnings[] = $errstr;
 
-            return false;
-        };
+            return true;
+        });
 
-        $records = (new DnsService(resolver: $resolver))->check(host: 'example.com');
+        try {
+            $resolver = static function (string $host, int $type): false {
+                unset($host, $type);
 
-        $this->assertSame([], $records->a);
-        $this->assertSame([], $records->mx);
+                return false;
+            };
+
+            $records = (new DnsService(resolver: $resolver))->check(host: 'example.com');
+
+            Assert::same($records->a, []);
+            Assert::same($records->mx, []);
+            Assert::same($warnings, []);
+        } finally {
+            \set_error_handler($prevHandler);
+        }
     }
 
-    #[Test]
     public function skipsRecordWithNonStringTypeButPresent(): void
     {
         $records = (new DnsService(resolver: $this->resolver([
@@ -103,22 +110,33 @@ final class DnsServiceTest extends TestCase
             ['type' => 'A', 'ip' => '1.2.3.4'],
         ])))->check(host: 'example.com');
 
-        $this->assertSame(['1.2.3.4'], $records->a);
+        Assert::same($records->a, ['1.2.3.4']);
     }
 
-    #[Test]
     public function returnsEmptyRecordsWhenResolverThrows(): void
     {
-        $resolver = static function (string $host, int $type): array {
-            unset($host, $type);
+        $warnings = [];
+        $prevHandler = \set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+            $warnings[] = $errstr;
 
-            throw new \RuntimeException(message: 'DNS failure');
-        };
+            return true;
+        });
 
-        $records = (new DnsService(resolver: $resolver))->check(host: 'example.com');
+        try {
+            $resolver = static function (string $host, int $type): array {
+                unset($host, $type);
 
-        $this->assertSame([], $records->a);
-        $this->assertSame([], $records->ns);
+                throw new \RuntimeException(message: 'DNS failure');
+            };
+
+            $records = (new DnsService(resolver: $resolver))->check(host: 'example.com');
+
+            Assert::same($records->a, []);
+            Assert::same($records->ns, []);
+            Assert::same($warnings, []);
+        } finally {
+            \set_error_handler($prevHandler);
+        }
     }
 
     /**

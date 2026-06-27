@@ -5,39 +5,37 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
+use Testo\Test;
 
-#[CoversClass(DomainMonitorOptions::class)]
-final class DomainMonitorOptionsTest extends TestCase
+#[Test]
+#[Covers(DomainMonitorOptions::class)]
+final class DomainMonitorOptionsTest
 {
-    #[Test]
     public function usesSensibleDefaults(): void
     {
         $options = new DomainMonitorOptions();
 
-        $this->assertSame(443, $options->port);
-        $this->assertSame(10.0, $options->timeoutSeconds);
-        $this->assertSame('rasuvaeff/domain-monitor', $options->userAgent);
-        $this->assertSame('GET', $options->httpMethod);
-        $this->assertNull($options->expectedOrg);
-        $this->assertSame(200, $options->expectedStatus);
-        $this->assertNull($options->requiredText);
-        $this->assertNull($options->forbiddenText);
+        Assert::same($options->port, 443);
+        Assert::same($options->timeoutSeconds, 10.0);
+        Assert::same($options->userAgent, 'rasuvaeff/domain-monitor');
+        Assert::same($options->httpMethod, 'GET');
+        Assert::null($options->expectedOrg);
+        Assert::same($options->expectedStatus, 200);
+        Assert::null($options->requiredText);
+        Assert::null($options->forbiddenText);
     }
 
-    #[Test]
     public function uppercasesHttpMethod(): void
     {
         $options = new DomainMonitorOptions(httpMethod: 'head');
 
-        $this->assertSame('HEAD', $options->httpMethod);
+        Assert::same($options->httpMethod, 'HEAD');
     }
 
-    #[Test]
     public function preservesCustomValues(): void
     {
         $options = new DomainMonitorOptions(
@@ -51,24 +49,25 @@ final class DomainMonitorOptionsTest extends TestCase
             forbiddenText: 'error',
         );
 
-        $this->assertSame(8443, $options->port);
-        $this->assertSame(30.0, $options->timeoutSeconds);
-        $this->assertSame('monitor/2.0', $options->userAgent);
-        $this->assertSame('POST', $options->httpMethod);
-        $this->assertSame('Example Inc.', $options->expectedOrg);
-        $this->assertSame(204, $options->expectedStatus);
-        $this->assertSame('healthy', $options->requiredText);
-        $this->assertSame('error', $options->forbiddenText);
+        Assert::same($options->port, 8443);
+        Assert::same($options->timeoutSeconds, 30.0);
+        Assert::same($options->userAgent, 'monitor/2.0');
+        Assert::same($options->httpMethod, 'POST');
+        Assert::same($options->expectedOrg, 'Example Inc.');
+        Assert::same($options->expectedStatus, 204);
+        Assert::same($options->requiredText, 'healthy');
+        Assert::same($options->forbiddenText, 'error');
     }
 
-    #[Test]
     #[DataProvider('invalidPortProvider')]
     public function throwsOnInvalidPort(int $port): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: \sprintf('Invalid port %d', $port));
-
-        new DomainMonitorOptions(port: $port);
+        try {
+            new DomainMonitorOptions(port: $port);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains(\sprintf('Invalid port %d', $port));
+        }
     }
 
     /**
@@ -81,41 +80,45 @@ final class DomainMonitorOptionsTest extends TestCase
         yield 'too high' => [65536];
     }
 
-    #[Test]
     public function throwsOnZeroOrNegativeTimeout(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Timeout must be greater than 0');
-
-        new DomainMonitorOptions(timeoutSeconds: 0.0);
+        try {
+            new DomainMonitorOptions(timeoutSeconds: 0.0);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Timeout must be greater than 0');
+        }
     }
 
-    #[Test]
     public function throwsOnEmptyUserAgent(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'User-Agent must not be empty');
-
-        new DomainMonitorOptions(userAgent: '');
+        try {
+            new DomainMonitorOptions(userAgent: '');
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('User-Agent must not be empty');
+        }
     }
 
-    #[Test]
     public function throwsOnInvalidHttpMethod(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Invalid HTTP method "GET POST"');
-
-        new DomainMonitorOptions(httpMethod: 'GET POST');
+        try {
+            new DomainMonitorOptions(httpMethod: 'GET POST');
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Invalid HTTP method "GET POST"');
+        }
     }
 
-    #[Test]
     #[DataProvider('invalidExpectedStatusProvider')]
     public function throwsOnInvalidExpectedStatus(int $status): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: \sprintf('Invalid HTTP status %d', $status));
-
-        new DomainMonitorOptions(expectedStatus: $status);
+        try {
+            new DomainMonitorOptions(expectedStatus: $status);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains(\sprintf('Invalid HTTP status %d', $status));
+        }
     }
 
     /**
@@ -127,32 +130,31 @@ final class DomainMonitorOptionsTest extends TestCase
         yield 'above range' => [600];
     }
 
-    #[Test]
     public function throwsOnBlankExpectedOrg(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Expected organization must not be empty');
-
-        new DomainMonitorOptions(expectedOrg: '  ');
+        try {
+            new DomainMonitorOptions(expectedOrg: '  ');
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Expected organization must not be empty');
+        }
     }
 
-    #[Test]
     public function acceptsBoundaryPorts(): void
     {
         $min = new DomainMonitorOptions(port: 1);
         $max = new DomainMonitorOptions(port: 65535);
 
-        $this->assertSame(1, $min->port);
-        $this->assertSame(65535, $max->port);
+        Assert::same($min->port, 1);
+        Assert::same($max->port, 65535);
     }
 
-    #[Test]
     public function acceptsBoundaryExpectedStatus(): void
     {
         $min = new DomainMonitorOptions(expectedStatus: 100);
         $max = new DomainMonitorOptions(expectedStatus: 599);
 
-        $this->assertSame(100, $min->expectedStatus);
-        $this->assertSame(599, $max->expectedStatus);
+        Assert::same($min->expectedStatus, 100);
+        Assert::same($max->expectedStatus, 599);
     }
 }

@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\HttpProbeOptions;
 use Rasuvaeff\DomainMonitor\SitemapService;
@@ -15,11 +12,14 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(SitemapService::class)]
-final class SitemapServiceTest extends TestCase
+#[Test]
+#[Covers(SitemapService::class)]
+final class SitemapServiceTest
 {
-    #[Test]
     public function countsUrlsInPlainSitemap(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(
@@ -30,13 +30,12 @@ final class SitemapServiceTest extends TestCase
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertSame(CheckStatus::OK, $result->status);
-        $this->assertSame(200, $result->httpStatus);
-        $this->assertTrue($result->exists);
-        $this->assertSame(3, $result->urlCount);
+        Assert::same($result->status, CheckStatus::OK);
+        Assert::same($result->httpStatus, 200);
+        Assert::true($result->exists);
+        Assert::same($result->urlCount, 3);
     }
 
-    #[Test]
     public function countsExactlyOneUrlInSitemap(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(
@@ -47,10 +46,9 @@ final class SitemapServiceTest extends TestCase
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertSame(1, $result->urlCount);
+        Assert::same($result->urlCount, 1);
     }
 
-    #[Test]
     public function countsUrlsInNamespacedSitemap(): void
     {
         $body = '<?xml version="1.0" encoding="UTF-8"?>'
@@ -63,11 +61,10 @@ final class SitemapServiceTest extends TestCase
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertSame(CheckStatus::OK, $result->status);
-        $this->assertSame(2, $result->urlCount);
+        Assert::same($result->status, CheckStatus::OK);
+        Assert::same($result->urlCount, 2);
     }
 
-    #[Test]
     public function countsOneUrlInNamespacedSitemap(): void
     {
         $body = '<?xml version="1.0" encoding="UTF-8"?>'
@@ -79,10 +76,9 @@ final class SitemapServiceTest extends TestCase
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertSame(1, $result->urlCount);
+        Assert::same($result->urlCount, 1);
     }
 
-    #[Test]
     public function countsZeroUrlsInEmptySitemap(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: '<urlset></urlset>'));
@@ -90,12 +86,11 @@ final class SitemapServiceTest extends TestCase
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertSame(CheckStatus::OK, $result->status);
-        $this->assertTrue($result->exists);
-        $this->assertSame(0, $result->urlCount);
+        Assert::same($result->status, CheckStatus::OK);
+        Assert::true($result->exists);
+        Assert::same($result->urlCount, 0);
     }
 
-    #[Test]
     public function returnsWarningForNonOkStatus(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 404, body: 'not found'));
@@ -103,13 +98,12 @@ final class SitemapServiceTest extends TestCase
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertSame(CheckStatus::WARNING, $result->status);
-        $this->assertSame(404, $result->httpStatus);
-        $this->assertFalse($result->exists);
-        $this->assertSame(0, $result->urlCount);
+        Assert::same($result->status, CheckStatus::WARNING);
+        Assert::same($result->httpStatus, 404);
+        Assert::false($result->exists);
+        Assert::same($result->urlCount, 0);
     }
 
-    #[Test]
     public function returnsWarningForMalformedXml(): void
     {
         $previousState = \libxml_use_internal_errors(use_errors: false);
@@ -119,14 +113,13 @@ final class SitemapServiceTest extends TestCase
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertSame(CheckStatus::WARNING, $result->status);
-        $this->assertTrue($result->exists);
-        $this->assertSame(0, $result->urlCount);
+        Assert::same($result->status, CheckStatus::WARNING);
+        Assert::true($result->exists);
+        Assert::same($result->urlCount, 0);
 
-        $this->assertFalse(\libxml_use_internal_errors(use_errors: $previousState));
+        Assert::false(\libxml_use_internal_errors(use_errors: $previousState));
     }
 
-    #[Test]
     public function returnsUnknownOnNetworkFailure(): void
     {
         $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'down'));
@@ -134,13 +127,12 @@ final class SitemapServiceTest extends TestCase
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertSame(CheckStatus::UNKNOWN, $result->status);
-        $this->assertSame(0, $result->httpStatus);
-        $this->assertFalse($result->exists);
-        $this->assertSame(0, $result->urlCount);
+        Assert::same($result->status, CheckStatus::UNKNOWN);
+        Assert::same($result->httpStatus, 0);
+        Assert::false($result->exists);
+        Assert::same($result->urlCount, 0);
     }
 
-    #[Test]
     public function logsErrorWithUrlContextOnNetworkFailure(): void
     {
         $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'connection refused'));
@@ -149,12 +141,11 @@ final class SitemapServiceTest extends TestCase
         (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory(), logger: $logger))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        $this->assertCount(1, $logger->records);
-        $this->assertSame('connection refused', $logger->records[0]['message']);
-        $this->assertSame(['url' => 'https://example.com/sitemap.xml'], $logger->records[0]['context']);
+        Assert::count($logger->records, 1);
+        Assert::same($logger->records[0]['message'], 'connection refused');
+        Assert::same($logger->records[0]['context'], ['url' => 'https://example.com/sitemap.xml']);
     }
 
-    #[Test]
     public function appliesOptionsMethodAndHeadersAndDefaultUserAgent(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: '<urlset/>'));
@@ -163,13 +154,12 @@ final class SitemapServiceTest extends TestCase
         (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml', options: $options);
 
-        $this->assertNotNull($client->lastRequest);
-        $this->assertSame('HEAD', $client->lastRequest->getMethod());
-        $this->assertSame('secret', $client->lastRequest->getHeaderLine(name: 'X-Token'));
-        $this->assertSame('probe/1.0', $client->lastRequest->getHeaderLine(name: 'User-Agent'));
+        Assert::notNull($client->lastRequest);
+        Assert::same($client->lastRequest->getMethod(), 'HEAD');
+        Assert::same($client->lastRequest->getHeaderLine(name: 'X-Token'), 'secret');
+        Assert::same($client->lastRequest->getHeaderLine(name: 'User-Agent'), 'probe/1.0');
     }
 
-    #[Test]
     public function keepsCustomUserAgentHeaderFromOptions(): void
     {
         $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: '<urlset/>'));
@@ -178,7 +168,7 @@ final class SitemapServiceTest extends TestCase
         (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml', options: $options);
 
-        $this->assertNotNull($client->lastRequest);
-        $this->assertSame('custom-agent', $client->lastRequest->getHeaderLine(name: 'User-Agent'));
+        Assert::notNull($client->lastRequest);
+        Assert::same($client->lastRequest->getHeaderLine(name: 'User-Agent'), 'custom-agent');
     }
 }

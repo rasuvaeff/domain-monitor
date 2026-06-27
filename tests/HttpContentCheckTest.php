@@ -5,17 +5,18 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\HttpContentCheck;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
+use Testo\Expect;
+use Testo\Test;
 
-#[CoversClass(HttpContentCheck::class)]
-final class HttpContentCheckTest extends TestCase
+#[Test]
+#[Covers(HttpContentCheck::class)]
+final class HttpContentCheckTest
 {
-    #[Test]
     public function preservesFields(): void
     {
         $check = new HttpContentCheck(
@@ -26,14 +27,13 @@ final class HttpContentCheckTest extends TestCase
             forbiddenTextFound: false,
         );
 
-        $this->assertSame(CheckStatus::OK, $check->status);
-        $this->assertSame(200, $check->httpStatus);
-        $this->assertSame('https://example.com', $check->finalUrl);
-        $this->assertTrue($check->requiredTextFound);
-        $this->assertFalse($check->forbiddenTextFound);
+        Assert::same($check->status, CheckStatus::OK);
+        Assert::same($check->httpStatus, 200);
+        Assert::same($check->finalUrl, 'https://example.com');
+        Assert::true($check->requiredTextFound);
+        Assert::false($check->forbiddenTextFound);
     }
 
-    #[Test]
     public function allowsNetworkFailureStatus(): void
     {
         $check = new HttpContentCheck(
@@ -44,15 +44,14 @@ final class HttpContentCheckTest extends TestCase
             forbiddenTextFound: false,
         );
 
-        $this->assertSame(0, $check->httpStatus);
-        $this->assertNull($check->finalUrl);
+        Assert::same($check->httpStatus, 0);
+        Assert::null($check->finalUrl);
     }
 
-    #[Test]
     #[DataProvider('throwsOnInvalidStatusProvider')]
     public function throwsOnInvalidStatus(int $httpStatus): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
+        Expect::exception(InvalidArgumentException::class);
 
         new HttpContentCheck(
             status: CheckStatus::UNKNOWN,
@@ -72,7 +71,6 @@ final class HttpContentCheckTest extends TestCase
         yield '600' => [600];
     }
 
-    #[Test]
     public function acceptsBoundaryHttpStatus100(): void
     {
         $check = new HttpContentCheck(
@@ -83,10 +81,9 @@ final class HttpContentCheckTest extends TestCase
             forbiddenTextFound: false,
         );
 
-        $this->assertSame(100, $check->httpStatus);
+        Assert::same($check->httpStatus, 100);
     }
 
-    #[Test]
     public function acceptsBoundaryHttpStatus599(): void
     {
         $check = new HttpContentCheck(
@@ -97,6 +94,6 @@ final class HttpContentCheckTest extends TestCase
             forbiddenTextFound: false,
         );
 
-        $this->assertSame(599, $check->httpStatus);
+        Assert::same($check->httpStatus, 599);
     }
 }

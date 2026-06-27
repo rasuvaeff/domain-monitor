@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\HttpProbeWithResponse;
 use Rasuvaeff\DomainMonitor\ProbeResult;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(HttpProbeWithResponse::class)]
-final class HttpProbeWithResponseTest extends TestCase
+#[Test]
+#[Covers(HttpProbeWithResponse::class)]
+final class HttpProbeWithResponseTest
 {
-    #[Test]
     public function exposesResultAndResponse(): void
     {
         $result = new ProbeResult(status: 200, totalTime: 0.1);
@@ -22,7 +22,7 @@ final class HttpProbeWithResponseTest extends TestCase
 
         $dto = new HttpProbeWithResponse(result: $result, response: $response);
 
-        $this->assertSame($result, $dto->result);
-        $this->assertSame($response, $dto->response);
+        Assert::same($dto->result, $result);
+        Assert::same($dto->response, $response);
     }
 }

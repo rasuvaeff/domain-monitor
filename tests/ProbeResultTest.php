@@ -5,23 +5,23 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\ProbeResult;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
+use Testo\Test;
 
-#[CoversClass(ProbeResult::class)]
-final class ProbeResultTest extends TestCase
+#[Test]
+#[Covers(ProbeResult::class)]
+final class ProbeResultTest
 {
-    #[Test]
     #[DataProvider('validStatusProvider')]
     public function acceptsValidStatuses(int $status): void
     {
         $result = new ProbeResult(status: $status, totalTime: 0.5);
 
-        $this->assertSame($status, $result->status);
-        $this->assertSame(0.5, $result->totalTime);
+        Assert::same($result->status, $status);
+        Assert::same($result->totalTime, 0.5);
     }
 
     /**
@@ -35,14 +35,15 @@ final class ProbeResultTest extends TestCase
         yield 'upper boundary' => [599];
     }
 
-    #[Test]
     #[DataProvider('invalidStatusProvider')]
     public function throwsOnInvalidStatus(int $status): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: \sprintf('Invalid HTTP status %d', $status));
-
-        new ProbeResult(status: $status, totalTime: 0.1);
+        try {
+            new ProbeResult(status: $status, totalTime: 0.1);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains(\sprintf('Invalid HTTP status %d', $status));
+        }
     }
 
     /**
@@ -55,20 +56,20 @@ final class ProbeResultTest extends TestCase
         yield 'negative' => [-1];
     }
 
-    #[Test]
     public function acceptsZeroTotalTime(): void
     {
         $result = new ProbeResult(status: 200, totalTime: 0.0);
 
-        $this->assertSame(0.0, $result->totalTime);
+        Assert::same($result->totalTime, 0.0);
     }
 
-    #[Test]
     public function throwsOnNegativeTotalTime(): void
     {
-        $this->expectException(exception: InvalidArgumentException::class);
-        $this->expectExceptionMessage(message: 'Total time must be greater than or equal to 0');
-
-        new ProbeResult(status: 200, totalTime: -0.1);
+        try {
+            new ProbeResult(status: 200, totalTime: -0.1);
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Total time must be greater than or equal to 0');
+        }
     }
 }

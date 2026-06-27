@@ -4,48 +4,57 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
-use Psr\Http\Message\ResponseInterface;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\SecurityHeadersService;
+use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Lifecycle\BeforeTest;
+use Testo\Test;
 
-#[CoversClass(SecurityHeadersService::class)]
-final class SecurityHeadersServiceTest extends TestCase
+#[Test]
+#[Covers(SecurityHeadersService::class)]
+final class SecurityHeadersServiceTest
 {
     private SecurityHeadersService $service;
 
-    #[\Override]
-    protected function setUp(): void
+    #[BeforeTest]
+    public function setUp(): void
     {
         $this->service = new SecurityHeadersService();
     }
 
-    #[Test]
     public function returnsOkWhenAllHeadersArePresent(): void
     {
-        $response = $this->createMock(ResponseInterface::class);
-        $response->method('hasHeader')->willReturn(true);
-
-        $result = $this->service->check(response: $response);
-
-        $this->assertSame(CheckStatus::OK, $result->status);
-        $this->assertSame([], $result->missingHeaders);
-    }
-
-    #[Test]
-    public function returnsWarningWhenHeadersAreMissing(): void
-    {
-        $headers = ['Strict-Transport-Security' => true, 'X-Frame-Options' => true];
-        $response = $this->createMock(ResponseInterface::class);
-        $response->method('hasHeader')->willReturnCallback(
-            static fn(string $name): bool => isset($headers[$name]),
+        $response = new FakeResponse(
+            statusCode: 200,
+            headers: [
+                'Strict-Transport-Security' => 'max-age=1',
+                'Content-Security-Policy' => "default-src 'self'",
+                'X-Frame-Options' => 'DENY',
+                'X-Content-Type-Options' => 'nosniff',
+            ],
         );
 
         $result = $this->service->check(response: $response);
 
-        $this->assertSame(CheckStatus::WARNING, $result->status);
-        $this->assertSame(['Content-Security-Policy', 'X-Content-Type-Options'], $result->missingHeaders);
+        Assert::same($result->status, CheckStatus::OK);
+        Assert::same($result->missingHeaders, []);
+    }
+
+    public function returnsWarningWhenHeadersAreMissing(): void
+    {
+        $response = new FakeResponse(
+            statusCode: 200,
+            headers: [
+                'Strict-Transport-Security' => 'max-age=1',
+                'X-Frame-Options' => 'DENY',
+            ],
+        );
+
+        $result = $this->service->check(response: $response);
+
+        Assert::same($result->status, CheckStatus::WARNING);
+        Assert::same($result->missingHeaders, ['Content-Security-Policy', 'X-Content-Type-Options']);
     }
 }

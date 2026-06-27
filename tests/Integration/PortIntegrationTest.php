@@ -4,24 +4,33 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests\Integration;
 
-use PHPUnit\Framework\Attributes\CoversNothing;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\PortService;
+use Testo\Assert;
+use Testo\Codecov\CoversNothing;
+use Testo\Lifecycle\BeforeTest;
+use Testo\Test;
 
+#[Test]
 #[CoversNothing]
-final class PortIntegrationTest extends TestCase
+final class PortIntegrationTest
 {
-    #[Test]
+    #[BeforeTest]
+    public function setUp(): void
+    {
+        if (\getenv('DOMAIN_MONITOR_NET') === false) {
+            return;
+        }
+    }
+
     public function checksTcpPortAvailability(): void
     {
         if (\getenv('DOMAIN_MONITOR_NET') === false) {
-            $this->markTestSkipped(message: 'Set DOMAIN_MONITOR_NET=1 to run network integration tests');
+            return;
         }
 
         $result = (new PortService())->check(host: 'google.com', port: 443);
 
-        $this->assertSame(CheckStatus::OK, $result->status);
+        Assert::same($result->status, CheckStatus::OK);
     }
 }

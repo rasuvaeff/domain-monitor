@@ -7,18 +7,18 @@
         "text": "php://stderr",
         "summary": "build/infection-summary.log"
     },
-    "phpUnit": {
-        "configDir": "."
-    },
+    "testFramework": "testo",
     "minMsi": 92,
     "mutators": {
         "@default": true,
-        // Raw I/O wrappers around PHP built-ins — no unit-testable logic, covered by integration tests only.
         "global-ignore": [
             "Rasuvaeff\\DomainMonitor\\PortService::defaultConnector",
             "Rasuvaeff\\DomainMonitor\\DnsService::defaultResolver",
             "Rasuvaeff\\DomainMonitor\\SslCertificateService::openStream",
             "Rasuvaeff\\DomainMonitor\\SslCertificateService::check"
-        ]
+        ],
+        // Equivalent mutant: idn_to_ascii already lowercases, making strtolower redundant.
+        // Also causes infection formatter crash ("Incorrectly nested style tag").
+        "UnwrapStrToLower": { "ignore": ["Rasuvaeff\\DomainMonitor\\HostNormalizer::normalizeAsciiHost"] }
     }
 }

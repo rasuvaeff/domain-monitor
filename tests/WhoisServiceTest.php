@@ -8,21 +8,21 @@ use Iodev\Whois\Exceptions\ConnectionException;
 use Iodev\Whois\Exceptions\ServerMismatchException;
 use Iodev\Whois\Exceptions\WhoisException;
 use Iodev\Whois\Modules\Tld\TldInfo as VendorTldInfo;
-use Iodev\Whois\Whois;
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
+use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
 use Rasuvaeff\DomainMonitor\WhoisService;
 use ReflectionClass;
 use ReflectionProperty;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
+use Testo\Test;
 use Throwable;
 
-#[CoversClass(WhoisService::class)]
-final class WhoisServiceTest extends TestCase
+#[Test]
+#[Covers(WhoisService::class)]
+final class WhoisServiceTest
 {
-    #[Test]
     public function mapsAllVendorFields(): void
     {
         $vendorInfo = $this->createVendorInfo([
@@ -31,80 +31,68 @@ final class WhoisServiceTest extends TestCase
             'expirationDate' => 1_769_817_600,
             'states' => ['active', 'ok'],
         ]);
-        $whois = $this->createMock(Whois::class);
-        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+        $whois = $this->fakeWhoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
-        $this->assertNotNull($result);
-        $this->assertSame('example.com', $result->domain);
-        $this->assertSame('Example Registrar', $result->registrar);
-        $this->assertNotNull($result->expirationDate);
-        $this->assertSame(1_769_817_600, $result->expirationDate->getTimestamp());
-        $this->assertSame(['active', 'ok'], $result->states);
+        Assert::notNull($result);
+        Assert::same($result->domain, 'example.com');
+        Assert::same($result->registrar, 'Example Registrar');
+        Assert::notNull($result->expirationDate);
+        Assert::same($result->expirationDate->getTimestamp(), 1_769_817_600);
+        Assert::same($result->states, ['active', 'ok']);
     }
 
-    #[Test]
     public function defaultsMissingOptionalFields(): void
     {
         $vendorInfo = $this->createVendorInfo(['domainName' => 'example.com']);
-        $whois = $this->createMock(Whois::class);
-        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+        $whois = $this->fakeWhoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
-        $this->assertNotNull($result);
-        $this->assertSame('example.com', $result->domain);
-        $this->assertNull($result->registrar);
-        $this->assertNull($result->expirationDate);
-        $this->assertSame([], $result->states);
+        Assert::notNull($result);
+        Assert::same($result->domain, 'example.com');
+        Assert::null($result->registrar);
+        Assert::null($result->expirationDate);
+        Assert::same($result->states, []);
     }
 
-    #[Test]
     public function ignoresNonStringStateEntries(): void
     {
         $vendorInfo = $this->createVendorInfo([
             'domainName' => 'example.com',
             'states' => ['ok', '', 42, 'clientHold'],
         ]);
-        $whois = $this->createMock(Whois::class);
-        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+        $whois = $this->fakeWhoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
-        $this->assertNotNull($result);
-        $this->assertSame(['ok', 'clientHold'], $result->states);
+        Assert::notNull($result);
+        Assert::same($result->states, ['ok', 'clientHold']);
     }
 
-    #[Test]
     public function returnsNullWhenLookupAndFallbackBothFail(): void
     {
-        $whois = $this->createMock(Whois::class);
-        $whois->expects($this->exactly(2))
-            ->method('loadDomainInfo')
-            ->willReturn(null);
+        $whois = $this->fakeWhoisReturning(null);
 
-        $this->assertNull((new WhoisService(whois: $whois))->check(host: 'www.example.com'));
+        $result = (new WhoisService(whois: $whois))->check(host: 'www.example.com');
+
+        Assert::null($result);
+        Assert::same($whois->callCount(), 2);
     }
 
-    #[Test]
     public function retriesWithBaseDomainWhenSubdomainLookupFails(): void
     {
         $vendorInfo = $this->createVendorInfo(['domainName' => 'example.com']);
-        $whois = $this->createMock(Whois::class);
-        $whois->expects($this->exactly(2))
-            ->method('loadDomainInfo')
-            ->willReturnCallback(static function (string $domain) use ($vendorInfo) {
-                return $domain === 'example.com' ? $vendorInfo : null;
-            });
+        $whois = new FakeWhois(static fn(string $domain): ?VendorTldInfo => $domain === 'example.com' ? $vendorInfo : null);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'a.b.example.com');
 
-        $this->assertNotNull($result);
-        $this->assertSame('example.com', $result->domain);
+        Assert::notNull($result);
+        Assert::same($result->domain, 'example.com');
+        Assert::same($whois->callCount(), 2);
     }
 
-    #[Test]
     public function usesStatesKeyWhenPresent(): void
     {
         $vendorInfo = $this->createVendorInfo([
@@ -112,88 +100,78 @@ final class WhoisServiceTest extends TestCase
             'states' => ['active'],
             'status' => ['wrong'],
         ]);
-        $whois = $this->createMock(Whois::class);
-        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+        $whois = $this->fakeWhoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
-        $this->assertNotNull($result);
-        $this->assertSame(['active'], $result->states);
+        Assert::notNull($result);
+        Assert::same($result->states, ['active']);
     }
 
-    #[Test]
     public function usesStatesKeyFromVendorInfo(): void
     {
         $vendorInfo = $this->createVendorInfo([
             'domainName' => 'example.com',
             'states' => ['active'],
         ]);
-        $whois = $this->createMock(Whois::class);
-        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+        $whois = $this->fakeWhoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
-        $this->assertNotNull($result);
-        $this->assertSame(['active'], $result->states);
+        Assert::notNull($result);
+        Assert::same($result->states, ['active']);
     }
 
-    #[Test]
     public function setsRegistrarToNullWhenEmpty(): void
     {
         $vendorInfo = $this->createVendorInfo([
             'domainName' => 'example.com',
             'registrar' => '',
         ]);
-        $whois = $this->createMock(Whois::class);
-        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+        $whois = $this->fakeWhoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
-        $this->assertNotNull($result);
-        $this->assertNull($result->registrar);
+        Assert::notNull($result);
+        Assert::null($result->registrar);
     }
 
-    #[Test]
     public function ignoresZeroAndNegativeExpirationTimestamps(): void
     {
         $vendorInfo = $this->createVendorInfo([
             'domainName' => 'example.com',
             'expirationDate' => 0,
         ]);
-        $whois = $this->createMock(Whois::class);
-        $whois->method('loadDomainInfo')->willReturn($vendorInfo);
+        $whois = $this->fakeWhoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
-        $this->assertNotNull($result);
-        $this->assertNull($result->expirationDate);
+        Assert::notNull($result);
+        Assert::null($result->expirationDate);
     }
 
-    #[Test]
     public function returnsNullForShortHostWithoutFallback(): void
     {
-        $whois = $this->createMock(Whois::class);
-        $whois->expects($this->once())
-            ->method('loadDomainInfo')
-            ->willReturn(null);
+        $whois = $this->fakeWhoisReturning(null);
 
-        $this->assertNull((new WhoisService(whois: $whois))->check(host: 'example.com'));
+        $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
+
+        Assert::null($result);
+        Assert::same($whois->callCount(), 1);
     }
 
-    #[Test]
     #[DataProvider('caughtExceptionProvider')]
     public function returnsNullAndLogsOnWhoisException(Throwable $exception): void
     {
-        $whois = $this->createMock(Whois::class);
-        $whois->method('loadDomainInfo')->willThrowException($exception);
+        $whois = new FakeWhois(static fn(): ?VendorTldInfo => null, $exception);
         $logger = new RecordingLogger();
 
         $result = (new WhoisService(whois: $whois, logger: $logger))->check(host: 'example.com');
 
-        $this->assertNull($result);
-        $this->assertCount(1, $logger->records);
-        $this->assertSame('boom', $logger->records[0]['message']);
-        $this->assertSame(['host' => 'example.com'], $logger->records[0]['context']);
+        Assert::null($result);
+        Assert::count($logger->records, 1);
+        Assert::same($logger->records[0]['message'], 'boom');
+        Assert::same($logger->records[0]['context'], ['host' => 'example.com']);
     }
 
     /**
@@ -204,6 +182,13 @@ final class WhoisServiceTest extends TestCase
         yield 'connection' => [new ConnectionException(message: 'boom')];
         yield 'server mismatch' => [new ServerMismatchException(message: 'boom')];
         yield 'whois' => [new WhoisException(message: 'boom')];
+    }
+
+    private function fakeWhoisReturning(?VendorTldInfo $vendorInfo): FakeWhois
+    {
+        $handler = static fn(): ?VendorTldInfo => $vendorInfo;
+
+        return new FakeWhois($handler);
     }
 
     /**

@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\SecurityHeadersCheck;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(SecurityHeadersCheck::class)]
-final class SecurityHeadersCheckTest extends TestCase
+#[Test]
+#[Covers(SecurityHeadersCheck::class)]
+final class SecurityHeadersCheckTest
 {
-    #[Test]
     public function preservesFields(): void
     {
         $check = new SecurityHeadersCheck(
@@ -26,12 +26,12 @@ final class SecurityHeadersCheckTest extends TestCase
             missingHeaders: ['Content-Security-Policy', 'X-Content-Type-Options'],
         );
 
-        $this->assertSame(CheckStatus::WARNING, $check->status);
-        $this->assertTrue($check->hasHsts);
-        $this->assertFalse($check->hasContentSecurityPolicy);
-        $this->assertTrue($check->hasXFrameOptions);
-        $this->assertFalse($check->hasXContentTypeOptions);
-        $this->assertSame(['Strict-Transport-Security', 'X-Frame-Options'], $check->presentHeaders);
-        $this->assertSame(['Content-Security-Policy', 'X-Content-Type-Options'], $check->missingHeaders);
+        Assert::same($check->status, CheckStatus::WARNING);
+        Assert::true($check->hasHsts);
+        Assert::false($check->hasContentSecurityPolicy);
+        Assert::true($check->hasXFrameOptions);
+        Assert::false($check->hasXContentTypeOptions);
+        Assert::same($check->presentHeaders, ['Strict-Transport-Security', 'X-Frame-Options']);
+        Assert::same($check->missingHeaders, ['Content-Security-Policy', 'X-Content-Type-Options']);
     }
 }

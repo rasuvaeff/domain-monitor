@@ -4,28 +4,27 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\DomainMonitor\DnsRecords;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 
-#[CoversClass(DnsRecords::class)]
-final class DnsRecordsTest extends TestCase
+#[Test]
+#[Covers(DnsRecords::class)]
+final class DnsRecordsTest
 {
-    #[Test]
     public function defaultsToEmptyArrays(): void
     {
         $records = new DnsRecords();
 
-        $this->assertSame([], $records->a);
-        $this->assertSame([], $records->aaaa);
-        $this->assertSame([], $records->mx);
-        $this->assertSame([], $records->ns);
-        $this->assertSame([], $records->txt);
-        $this->assertSame([], $records->cname);
+        Assert::same($records->a, []);
+        Assert::same($records->aaaa, []);
+        Assert::same($records->mx, []);
+        Assert::same($records->ns, []);
+        Assert::same($records->txt, []);
+        Assert::same($records->cname, []);
     }
 
-    #[Test]
     public function preservesProvidedRecords(): void
     {
         $records = new DnsRecords(
@@ -37,11 +36,11 @@ final class DnsRecordsTest extends TestCase
             cname: ['example.com'],
         );
 
-        $this->assertSame(['1.1.1.1'], $records->a);
-        $this->assertSame(['::1'], $records->aaaa);
-        $this->assertSame(['mail.example.com'], $records->mx);
-        $this->assertSame(['ns1.example.com'], $records->ns);
-        $this->assertSame(['v=spf1'], $records->txt);
-        $this->assertSame(['example.com'], $records->cname);
+        Assert::same($records->a, ['1.1.1.1']);
+        Assert::same($records->aaaa, ['::1']);
+        Assert::same($records->mx, ['mail.example.com']);
+        Assert::same($records->ns, ['ns1.example.com']);
+        Assert::same($records->txt, ['v=spf1']);
+        Assert::same($records->cname, ['example.com']);
     }
 }
