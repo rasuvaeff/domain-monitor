@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 1.1.1 — 2026-06-27
+
+- Migrate test suite from PHPUnit to Testo. Internal change, no public API impact.
 
 ## 1.1.0 — 2026-06-16
 
@@ -27,3 +29,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RobotsTxtService`, `SitemapService` — `robots.txt` and sitemap availability checks.
 - `HostNormalizer` — single normalization point for host/URL inputs with optional IDN support.
 - `DomainHealthReport`, `CheckStatus` — composite report container and unified status enum.
+
