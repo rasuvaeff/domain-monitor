@@ -6,6 +6,9 @@ namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
 use Rasuvaeff\DomainMonitor\HostNormalizer;
+use Rasuvaeff\PropertyTesting\ArbitraryInterface;
+use Rasuvaeff\PropertyTesting\Gen;
+use Rasuvaeff\PropertyTesting\Property;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -144,5 +147,70 @@ final class HostNormalizerTest
         yield 'no scheme' => ['/just/path', 'Invalid URL "/just/path"'];
         yield 'scheme without host' => ['http://', 'Invalid URL "http://"'];
         yield 'non-http scheme' => ['ftp://example.com', 'URL must use http or https scheme: "ftp://example.com"'];
+    }
+
+    #[Property(runs: 300)]
+    public function normalizeHostIsIdempotent(string $host): void
+    {
+        $once = $this->normalizer->normalizeHost(hostOrUrl: $host);
+        $twice = $this->normalizer->normalizeHost(hostOrUrl: $once);
+
+        Assert::same($twice, $once);
+        Assert::same(\strtolower($once), $once);
+    }
+
+    /** @return array<string, ArbitraryInterface> */
+    private function normalizeHostIsIdempotentGenerators(): array
+    {
+        return ['host' => self::hostGenerator()];
+    }
+
+    #[Property(runs: 300)]
+    public function normalizeHostIgnoresSchemePortPathAndCase(string $host): void
+    {
+        $decorated = 'HTTPS://' . \strtoupper($host) . ':8443/Some/Path?q=1#frag';
+
+        Assert::same($this->normalizer->normalizeHost(hostOrUrl: $decorated), $host);
+    }
+
+    /** @return array<string, ArbitraryInterface> */
+    private function normalizeHostIgnoresSchemePortPathAndCaseGenerators(): array
+    {
+        return ['host' => self::hostGenerator()];
+    }
+
+    #[Property(runs: 300)]
+    public function normalizeUrlIsIdempotent(string $host): void
+    {
+        $url = 'https://' . $host . '/Path?q=1';
+        $once = $this->normalizer->normalizeUrl(url: $url);
+        $twice = $this->normalizer->normalizeUrl(url: $once);
+
+        Assert::same($twice, $once);
+    }
+
+    /** @return array<string, ArbitraryInterface> */
+    private function normalizeUrlIsIdempotentGenerators(): array
+    {
+        return ['host' => self::hostGenerator()];
+    }
+
+    /**
+     * Generates syntactically valid lower-case hostnames of 1-3 labels, each a
+     * base-36 string (so always `[a-z0-9]`, never hyphen-bounded or too long).
+     */
+    private static function hostGenerator(): ArbitraryInterface
+    {
+        return Gen::map(
+            Gen::nonEmptyArrayOf(Gen::intBetween(1, 1_000_000_000)),
+            static function (array $codes): string {
+                $labels = \array_map(
+                    static fn(int $code): string => \base_convert((string) $code, 10, 36),
+                    \array_slice($codes, 0, 3),
+                );
+
+                return \implode('.', $labels);
+            },
+        );
     }
 }
