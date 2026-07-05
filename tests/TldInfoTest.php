@@ -84,4 +84,37 @@ final class TldInfoTest
 
         Assert::null($tldInfo->daysUntilExpiry(now: new DateTimeImmutable(datetime: '2026-01-01T00:00:00+00:00')));
     }
+
+    public function serializesExpirationDateAsIso8601(): void
+    {
+        $tldInfo = new TldInfo(
+            domain: 'example.com',
+            registrar: 'Example Registrar',
+            expirationDate: new DateTimeImmutable(datetime: '2026-07-17T00:00:00+00:00'),
+            states: ['clientTransferProhibited'],
+        );
+
+        Assert::same(
+            $tldInfo->jsonSerialize(),
+            [
+                'domain' => 'example.com',
+                'registrar' => 'Example Registrar',
+                'expirationDate' => '2026-07-17T00:00:00+00:00',
+                'states' => ['clientTransferProhibited'],
+            ],
+        );
+    }
+
+    public function serializesNullExpirationDate(): void
+    {
+        Assert::same(
+            (new TldInfo(domain: 'example.com'))->jsonSerialize(),
+            [
+                'domain' => 'example.com',
+                'registrar' => null,
+                'expirationDate' => null,
+                'states' => [],
+            ],
+        );
+    }
 }

@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use InvalidArgumentException;
+use JsonSerializable;
 
 /**
  * @api
  */
-final readonly class SslCertificate
+final readonly class SslCertificate implements JsonSerializable
 {
     public function __construct(
         public DateTimeImmutable $validFrom,
@@ -44,5 +46,19 @@ final readonly class SslCertificate
         }
 
         return $this->daysUntilExpiry(now: $now) <= $days;
+    }
+
+    /**
+     * @return array{validFrom: string, validUntil: string, subjectCn: string, issuer: string|null}
+     */
+    #[\Override]
+    public function jsonSerialize(): array
+    {
+        return [
+            'validFrom' => $this->validFrom->format(format: DateTimeInterface::ATOM),
+            'validUntil' => $this->validUntil->format(format: DateTimeInterface::ATOM),
+            'subjectCn' => $this->subjectCn,
+            'issuer' => $this->issuer,
+        ];
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
+use Rasuvaeff\DomainMonitor\CheckName;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\DnsService;
 use Rasuvaeff\DomainMonitor\DomainHealthReport;
@@ -13,6 +14,7 @@ use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
 use Rasuvaeff\DomainMonitor\HttpContentCheckService;
 use Rasuvaeff\DomainMonitor\HttpProbeService;
 use Rasuvaeff\DomainMonitor\PortService;
+use Rasuvaeff\DomainMonitor\ReportThresholds;
 use Rasuvaeff\DomainMonitor\RobotsTxtService;
 use Rasuvaeff\DomainMonitor\SecurityHeadersService;
 use Rasuvaeff\DomainMonitor\SitemapService;
@@ -20,6 +22,7 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\ClientExceptionStub;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequest;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
+use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
 use Testo\Assert;
@@ -261,6 +264,70 @@ final class DomainMonitorTest
         $report = $monitor->check(host: 'example.com');
 
         Assert::instanceOf($report, DomainHealthReport::class);
+    }
+
+    public function failedCheckIsRecordedAsCheckError(): void
+    {
+        $monitor = new DomainMonitor(
+            port: new PortService(connector: static fn(): array => throw new \RuntimeException(message: 'port closed')),
+        );
+
+        $report = $monitor->check(host: 'example.com');
+
+        Assert::null($report->port);
+        Assert::true($report->hasErrors());
+
+        $errors = $report->getErrors();
+
+        Assert::count($errors, 1);
+        Assert::same($errors[0]->check, CheckName::Port);
+        Assert::string($errors[0]->message)->contains('port closed');
+
+        $portCheck = $report->getCheck(name: CheckName::Port);
+
+        Assert::notNull($portCheck);
+        Assert::same($portCheck->status, CheckStatus::UNKNOWN);
+    }
+
+    public function propagatesThresholdsFromOptionsToReport(): void
+    {
+        $thresholds = new ReportThresholds(sslWarnDays: 14);
+
+        $report = (new DomainMonitor())->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(thresholds: $thresholds),
+        );
+
+        Assert::same($report->thresholds, $thresholds);
+    }
+
+    public function createWiresEveryServiceFromHttpAndWhois(): void
+    {
+        $monitor = DomainMonitor::create(
+            httpClient: new RecordingHttpClient(response: new FakeResponse(statusCode: 200)),
+            requestFactory: new FakeRequestFactory(),
+            whois: new FakeWhois(handler: static fn(string $domain) => null),
+        );
+
+        Assert::notNull($monitor->httpProbe);
+        Assert::notNull($monitor->ssl);
+        Assert::notNull($monitor->whois);
+        Assert::notNull($monitor->dns);
+        Assert::notNull($monitor->port);
+        Assert::notNull($monitor->securityHeaders);
+        Assert::notNull($monitor->robotsTxt);
+        Assert::notNull($monitor->sitemap);
+        Assert::notNull($monitor->content);
+    }
+
+    public function createWithoutWhoisDisablesWhoisCheck(): void
+    {
+        $monitor = DomainMonitor::create(
+            httpClient: new RecordingHttpClient(response: new FakeResponse(statusCode: 200)),
+            requestFactory: new FakeRequestFactory(),
+        );
+
+        Assert::null($monitor->whois);
     }
 
     public function runsAllControllableServicesAndAssemblesReport(): void

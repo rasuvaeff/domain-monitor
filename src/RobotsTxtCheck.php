@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor;
 
 use InvalidArgumentException;
+use JsonSerializable;
 
 /**
  * @api
  */
-final readonly class RobotsTxtCheck
+final readonly class RobotsTxtCheck implements JsonSerializable
 {
     /**
      * @param string[] $sitemaps
@@ -23,5 +24,19 @@ final readonly class RobotsTxtCheck
         if ($httpStatus !== 0 && ($httpStatus < 100 || $httpStatus > 599)) {
             throw new InvalidArgumentException(message: \sprintf('Invalid HTTP status %d', $httpStatus));
         }
+    }
+
+    /**
+     * @return array{status: string, httpStatus: int, exists: bool, sitemaps: string[]}
+     */
+    #[\Override]
+    public function jsonSerialize(): array
+    {
+        return [
+            'status' => $this->status->value,
+            'httpStatus' => $this->httpStatus,
+            'exists' => $this->exists,
+            'sitemaps' => $this->sitemaps,
+        ];
     }
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 — 2026-07-05
+
+- `DomainHealthReport::getChecks()` returns a `list<CheckResult>` — one per executed check with its `CheckStatus` and a human-readable `reason`; `getCheck(CheckName)` looks one up. `getStatus()` is now derived from this list (unchanged aggregate values).
+- New `CheckName` enum and `CheckResult` DTO.
+- All result DTOs (`DomainHealthReport`, `ProbeResult`, `SslCertificate`, `TldInfo`, `DnsRecords`, `HttpContentCheck`, `PortCheck`, `SecurityHeadersCheck`, `RobotsTxtCheck`, `SitemapCheck`, `CheckResult`, `CheckError`, `ReportThresholds`) implement `JsonSerializable` — `json_encode($report)` yields a complete snapshot (dates as ISO-8601, enums as their values).
+- `ReportThresholds` VO makes SSL "expiring soon" and the WHOIS warning window configurable (opt-in via `DomainMonitorOptions`/`DomainHealthReport`; `default()` preserves 1.1.x behaviour, `strict()` warns 14 days before SSL expiry).
+- `CheckError` + `DomainHealthReport::getErrors()`/`hasErrors()` distinguish a check that errored (reported as `UNKNOWN`, never inflating the aggregate) from one that was disabled. `DomainMonitor` records per-check errors instead of silently dropping them.
+- `DomainMonitorInterface` (implemented by `DomainMonitor`) enables mocking and decoration.
+- `DomainMonitor::create()` factory wires every check from a single PSR-18 client + PSR-17 factory (+ optional WHOIS); `DomainMonitorBuilder` offers granular, fluent composition.
+
 ## 1.1.2 — 2026-06-30
 
 - Add `/benchmarks` and `/Makefile` to `.gitattributes` export-ignore.

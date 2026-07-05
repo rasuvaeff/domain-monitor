@@ -83,4 +83,20 @@ final class PortCheckTest
             Assert::string($e->getMessage())->contains('Connect time must be greater than or equal to 0');
         }
     }
+
+    public function serializesStatusEnumAndError(): void
+    {
+        $check = new PortCheck(status: CheckStatus::CRITICAL, host: 'example.com', port: 443, connectTime: 0.0, error: 'refused');
+
+        Assert::same(
+            $check->jsonSerialize(),
+            [
+                'status' => 'critical',
+                'host' => 'example.com',
+                'port' => 443,
+                'connectTime' => 0.0,
+                'error' => 'refused',
+            ],
+        );
+    }
 }

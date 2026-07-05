@@ -34,4 +34,30 @@ final class SecurityHeadersCheckTest
         Assert::same($check->presentHeaders, ['Strict-Transport-Security', 'X-Frame-Options']);
         Assert::same($check->missingHeaders, ['Content-Security-Policy', 'X-Content-Type-Options']);
     }
+
+    public function serializesFlagsAndHeaderLists(): void
+    {
+        $check = new SecurityHeadersCheck(
+            status: CheckStatus::WARNING,
+            hasHsts: true,
+            hasContentSecurityPolicy: false,
+            hasXFrameOptions: true,
+            hasXContentTypeOptions: false,
+            presentHeaders: ['Strict-Transport-Security', 'X-Frame-Options'],
+            missingHeaders: ['Content-Security-Policy', 'X-Content-Type-Options'],
+        );
+
+        Assert::same(
+            $check->jsonSerialize(),
+            [
+                'status' => 'warning',
+                'hasHsts' => true,
+                'hasContentSecurityPolicy' => false,
+                'hasXFrameOptions' => true,
+                'hasXContentTypeOptions' => false,
+                'presentHeaders' => ['Strict-Transport-Security', 'X-Frame-Options'],
+                'missingHeaders' => ['Content-Security-Policy', 'X-Content-Type-Options'],
+            ],
+        );
+    }
 }

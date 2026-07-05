@@ -51,6 +51,23 @@ make test
 - `WhoisService` maps vendor `TldInfo` to package `TldInfo`; do not leak vendor DTOs in the public API.
 - Code: `declare(strict_types=1)`, `#[\Override]`, explicit types.
 
+## Roadmap (deferred to a future 2.0 — breaking)
+
+Consumer-gap work landed additively in 1.2.0 (per-check `getChecks()`/reasons,
+`JsonSerializable`, `ReportThresholds`, `CheckError`, `DomainMonitorInterface` +
+`create()`/`DomainMonitorBuilder`). Two follow-ups are intentionally held back
+because they cannot be done without a breaking change:
+
+- **Strict thresholds by default.** Flip `ReportThresholds::default()` to
+  `sslWarnDays: 30` ("secure by default"). Changes `getStatus()` for
+  near-expiry certificates → behavioural break → major only.
+- **Per-service interfaces.** Introduce `HttpProbeServiceInterface`,
+  `SslCertificateServiceInterface`, … and widen `DomainMonitor`'s constructor to
+  accept them (swap/mock a single check). Widening concrete → interface is safe
+  for callers but `roave/backward-compatibility-check` flags the signature
+  change → major only. 5a (`DomainMonitorInterface`) already covers
+  mock/decorate at the orchestrator seam, so this is low priority.
+
 ## When you finish
 
 - Update `README.md` and `examples/` if usage changed; update `CHANGELOG.md` when releasing.

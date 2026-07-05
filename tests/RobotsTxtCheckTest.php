@@ -60,4 +60,24 @@ final class RobotsTxtCheckTest
 
         Assert::same($check->httpStatus, 599);
     }
+
+    public function serializesStatusEnumAndSitemaps(): void
+    {
+        $check = new RobotsTxtCheck(
+            status: CheckStatus::OK,
+            httpStatus: 200,
+            exists: true,
+            sitemaps: ['https://example.com/sitemap.xml'],
+        );
+
+        Assert::same(
+            $check->jsonSerialize(),
+            [
+                'status' => 'ok',
+                'httpStatus' => 200,
+                'exists' => true,
+                'sitemaps' => ['https://example.com/sitemap.xml'],
+            ],
+        );
+    }
 }

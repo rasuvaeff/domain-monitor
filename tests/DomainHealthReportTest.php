@@ -5,11 +5,18 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use DateTimeImmutable;
+use Rasuvaeff\DomainMonitor\CheckError;
+use Rasuvaeff\DomainMonitor\CheckName;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\DnsRecords;
 use Rasuvaeff\DomainMonitor\DomainHealthReport;
+use Rasuvaeff\DomainMonitor\HttpContentCheck;
 use Rasuvaeff\DomainMonitor\PortCheck;
 use Rasuvaeff\DomainMonitor\ProbeResult;
+use Rasuvaeff\DomainMonitor\ReportThresholds;
+use Rasuvaeff\DomainMonitor\RobotsTxtCheck;
+use Rasuvaeff\DomainMonitor\SecurityHeadersCheck;
+use Rasuvaeff\DomainMonitor\SitemapCheck;
 use Rasuvaeff\DomainMonitor\SslCertificate;
 use Rasuvaeff\DomainMonitor\TldInfo;
 use Testo\Assert;
@@ -267,6 +274,279 @@ final class DomainHealthReportTest
         );
 
         Assert::same($report->getStatus(), CheckStatus::WARNING);
+    }
+
+    public function getChecksReturnsOneResultPerNonNullCheckInOrder(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            probe: new ProbeResult(status: 200, totalTime: 0.1),
+            dns: new DnsRecords(a: ['1.2.3.4']),
+        );
+
+        $checks = $report->getChecks();
+
+        Assert::count($checks, 2);
+        Assert::same($checks[0]->check, CheckName::Probe);
+        Assert::same($checks[1]->check, CheckName::Dns);
+    }
+
+    public function getCheckFindsByNameOrReturnsNull(): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', probe: new ProbeResult(status: 200, totalTime: 0.1));
+
+        $probe = $report->getCheck(name: CheckName::Probe);
+
+        Assert::notNull($probe);
+        Assert::same($probe->status, CheckStatus::OK);
+        Assert::null($report->getCheck(name: CheckName::Ssl));
+    }
+
+    #[DataProvider('probeReasonProvider')]
+    public function buildsProbeReason(int $status, string $needle): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', probe: new ProbeResult(status: $status, totalTime: 0.1));
+
+        $check = $report->getCheck(name: CheckName::Probe);
+
+        Assert::notNull($check);
+        Assert::string($check->reason)->contains($needle);
+    }
+
+    /**
+     * @return iterable<string, array{int, string}>
+     */
+    public static function probeReasonProvider(): iterable
+    {
+        yield 'network failure' => [0, 'Connection failed or no response'];
+        yield 'server error' => [503, 'Server error (HTTP 503)'];
+        yield 'client error' => [404, 'Client error (HTTP 404)'];
+        yield 'ok' => [200, 'HTTP 200'];
+    }
+
+    public function dnsReasonCountsPresentRecordTypes(): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', dns: new DnsRecords(a: ['1.2.3.4'], mx: ['mail.example.com']));
+
+        $check = $report->getCheck(name: CheckName::Dns);
+
+        Assert::notNull($check);
+        Assert::same($check->status, CheckStatus::OK);
+        Assert::string($check->reason)->contains('2 record type(s) present');
+    }
+
+    public function dnsReasonWhenNoRecords(): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', dns: new DnsRecords());
+
+        $check = $report->getCheck(name: CheckName::Dns);
+
+        Assert::notNull($check);
+        Assert::string($check->reason)->contains('No DNS records found');
+    }
+
+    public function sslExpiredReasonReportsDaysSinceExpiry(): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', ssl: $this->certificate(validUntil: '2000-01-01T00:00:00+00:00'));
+
+        $check = $report->getCheck(name: CheckName::Ssl);
+
+        Assert::notNull($check);
+        Assert::same($check->status, CheckStatus::CRITICAL);
+        Assert::string($check->reason)->contains('Certificate expired');
+    }
+
+    public function sslWarnDaysFlipsOkToWarning(): void
+    {
+        $ssl = new SslCertificate(
+            validFrom: new DateTimeImmutable(datetime: '-10 days'),
+            validUntil: new DateTimeImmutable(datetime: '+10 days'),
+            subjectCn: 'example.com',
+        );
+
+        $default = new DomainHealthReport(host: 'example.com', ssl: $ssl);
+        $strict = new DomainHealthReport(host: 'example.com', ssl: $ssl, thresholds: new ReportThresholds(sslWarnDays: 30));
+
+        Assert::same($default->getCheck(name: CheckName::Ssl)?->status, CheckStatus::OK);
+        Assert::same($strict->getCheck(name: CheckName::Ssl)?->status, CheckStatus::WARNING);
+    }
+
+    public function customWhoisWarnDaysWidensWarningWindow(): void
+    {
+        $whois = new TldInfo(domain: 'example.com', expirationDate: new DateTimeImmutable(datetime: '+40 days'));
+
+        $default = new DomainHealthReport(host: 'example.com', whois: $whois);
+        $wide = new DomainHealthReport(host: 'example.com', whois: $whois, thresholds: new ReportThresholds(whoisWarnDays: 60));
+
+        Assert::same($default->getCheck(name: CheckName::Whois)?->status, CheckStatus::OK);
+        Assert::same($wide->getCheck(name: CheckName::Whois)?->status, CheckStatus::WARNING);
+    }
+
+    #[DataProvider('contentReasonProvider')]
+    public function buildsContentReason(HttpContentCheck $content, string $needle): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', content: $content);
+
+        $check = $report->getCheck(name: CheckName::Content);
+
+        Assert::notNull($check);
+        Assert::string($check->reason)->contains($needle);
+    }
+
+    /**
+     * @return iterable<string, array{HttpContentCheck, string}>
+     */
+    public static function contentReasonProvider(): iterable
+    {
+        yield 'forbidden present' => [
+            new HttpContentCheck(status: CheckStatus::CRITICAL, httpStatus: 200, finalUrl: null, requiredTextFound: true, forbiddenTextFound: true),
+            'Forbidden text present',
+        ];
+        yield 'required missing' => [
+            new HttpContentCheck(status: CheckStatus::CRITICAL, httpStatus: 200, finalUrl: null, requiredTextFound: false, forbiddenTextFound: false),
+            'Required text missing',
+        ];
+        yield 'unexpected status' => [
+            new HttpContentCheck(status: CheckStatus::CRITICAL, httpStatus: 500, finalUrl: null, requiredTextFound: true, forbiddenTextFound: false),
+            'Unexpected HTTP 500',
+        ];
+        yield 'content ok' => [
+            new HttpContentCheck(status: CheckStatus::OK, httpStatus: 200, finalUrl: null, requiredTextFound: true, forbiddenTextFound: false),
+            'Content OK (HTTP 200)',
+        ];
+    }
+
+    public function portReasonReflectsReachability(): void
+    {
+        $reachable = new DomainHealthReport(
+            host: 'example.com',
+            port: new PortCheck(status: CheckStatus::OK, host: 'example.com', port: 443, connectTime: 0.04),
+        );
+        $closed = new DomainHealthReport(
+            host: 'example.com',
+            port: new PortCheck(status: CheckStatus::CRITICAL, host: 'example.com', port: 443, connectTime: 0.0, error: 'refused'),
+        );
+
+        Assert::string($reachable->getCheck(name: CheckName::Port)?->reason ?? '')->contains('Port 443 reachable');
+        Assert::string($closed->getCheck(name: CheckName::Port)?->reason ?? '')->contains('Port closed or unreachable: refused');
+    }
+
+    public function securityHeadersReasonListsMissingHeaders(): void
+    {
+        $missing = new DomainHealthReport(
+            host: 'example.com',
+            securityHeaders: new SecurityHeadersCheck(
+                status: CheckStatus::WARNING,
+                hasHsts: false,
+                hasContentSecurityPolicy: false,
+                hasXFrameOptions: false,
+                hasXContentTypeOptions: true,
+                presentHeaders: ['X-Content-Type-Options'],
+                missingHeaders: ['Strict-Transport-Security', 'Content-Security-Policy'],
+            ),
+        );
+        $complete = new DomainHealthReport(
+            host: 'example.com',
+            securityHeaders: new SecurityHeadersCheck(
+                status: CheckStatus::OK,
+                hasHsts: true,
+                hasContentSecurityPolicy: true,
+                hasXFrameOptions: true,
+                hasXContentTypeOptions: true,
+                presentHeaders: ['Strict-Transport-Security'],
+                missingHeaders: [],
+            ),
+        );
+
+        Assert::string($missing->getCheck(name: CheckName::SecurityHeaders)?->reason ?? '')
+            ->contains('Missing headers: Strict-Transport-Security, Content-Security-Policy');
+        Assert::string($complete->getCheck(name: CheckName::SecurityHeaders)?->reason ?? '')
+            ->contains('All monitored security headers present');
+    }
+
+    public function robotsAndSitemapReasonsReflectExistence(): void
+    {
+        $robots = new DomainHealthReport(
+            host: 'example.com',
+            robotsTxt: new RobotsTxtCheck(status: CheckStatus::OK, httpStatus: 200, exists: true, sitemaps: ['https://example.com/sitemap.xml']),
+        );
+        $sitemap = new DomainHealthReport(
+            host: 'example.com',
+            sitemap: new SitemapCheck(status: CheckStatus::OK, httpStatus: 200, exists: true, urlCount: 42),
+        );
+
+        Assert::string($robots->getCheck(name: CheckName::RobotsTxt)?->reason ?? '')->contains('robots.txt found (1 sitemap hint(s))');
+        Assert::string($sitemap->getCheck(name: CheckName::Sitemap)?->reason ?? '')->contains('Sitemap found (42 URL(s))');
+    }
+
+    public function erroredChecksAppearAsUnknownResultsAndAreQueryable(): void
+    {
+        $errors = [new CheckError(check: CheckName::Ssl, message: 'boom')];
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            probe: new ProbeResult(status: 200, totalTime: 0.1),
+            errors: $errors,
+        );
+
+        Assert::true($report->hasErrors());
+        Assert::same($report->getErrors(), $errors);
+
+        $sslCheck = $report->getCheck(name: CheckName::Ssl);
+
+        Assert::notNull($sslCheck);
+        Assert::same($sslCheck->status, CheckStatus::UNKNOWN);
+        Assert::string($sslCheck->reason)->contains('Check failed: boom');
+    }
+
+    public function reportWithoutErrorsReportsNoErrors(): void
+    {
+        Assert::false((new DomainHealthReport(host: 'example.com'))->hasErrors());
+    }
+
+    public function erroredCheckDoesNotInflateAggregateStatus(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            probe: new ProbeResult(status: 200, totalTime: 0.1),
+            errors: [new CheckError(check: CheckName::Ssl, message: 'boom')],
+        );
+
+        Assert::same($report->getStatus(), CheckStatus::OK);
+    }
+
+    public function serializesTopLevelStructure(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            probe: new ProbeResult(status: 200, totalTime: 0.1),
+            dns: new DnsRecords(a: ['1.2.3.4']),
+            errors: [new CheckError(check: CheckName::Ssl, message: 'boom')],
+        );
+
+        $json = $report->jsonSerialize();
+
+        Assert::same($json['host'], 'example.com');
+        Assert::same($json['status'], 'ok');
+        Assert::same($json['probe'], $report->probe);
+        Assert::same($json['dns'], $report->dns);
+        Assert::same($json['ssl'], null);
+        Assert::same($json['errors'], $report->errors);
+    }
+
+    public function jsonEncodesToNestedStructure(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            probe: new ProbeResult(status: 200, totalTime: 0.1),
+            errors: [new CheckError(check: CheckName::Ssl, message: 'boom')],
+        );
+
+        $encoded = (string) \json_encode($report);
+
+        Assert::string($encoded)->contains('"host":"example.com"');
+        Assert::string($encoded)->contains('"check":"probe"');
+        Assert::string($encoded)->contains('"reason":"HTTP 200"');
+        Assert::string($encoded)->contains('"check":"ssl","message":"boom"');
     }
 
     private function certificate(string $validUntil): SslCertificate
