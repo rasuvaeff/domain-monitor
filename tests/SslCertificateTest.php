@@ -126,4 +126,24 @@ final class SslCertificateTest
             subjectCn: 'example.com',
         );
     }
+
+    public function serializesDatesAsIso8601(): void
+    {
+        $certificate = new SslCertificate(
+            validFrom: new DateTimeImmutable(datetime: '2026-01-01T00:00:00+00:00'),
+            validUntil: new DateTimeImmutable(datetime: '2026-04-01T00:00:00+00:00'),
+            subjectCn: 'example.com',
+            issuer: 'Example CA',
+        );
+
+        Assert::same(
+            $certificate->jsonSerialize(),
+            [
+                'validFrom' => '2026-01-01T00:00:00+00:00',
+                'validUntil' => '2026-04-01T00:00:00+00:00',
+                'subjectCn' => 'example.com',
+                'issuer' => 'Example CA',
+            ],
+        );
+    }
 }

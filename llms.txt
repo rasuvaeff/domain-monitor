@@ -12,7 +12,11 @@ composer require rasuvaeff/domain-monitor
 - Host-only inputs go to host services; HTTP services require `http://` or `https://` URLs.
 - `SslCertificateService` reads peer certificates best-effort and does not verify trust.
 - `DomainMonitor` orchestrator runs all configured services in one call, reuses the HTTP response for probe + security headers + content check. Services are optional: `null` = check disabled.
-- `DomainMonitor` catches exceptions per check and omits failed checks from the report (logs via PSR-3).
+- `DomainMonitor::create($client, $factory, $whois?)` wires every check with defaults; `DomainMonitorBuilder` composes granularly. `DomainMonitor implements DomainMonitorInterface`.
+- `DomainMonitor` catches exceptions per check; a failed check becomes a `CheckError` (see `getErrors()`/`hasErrors()`), reported as `UNKNOWN`, not silently dropped. Disabled check = `null`.
+- Read the report via `getChecks()` (`list<CheckResult>` with `reason`) / `getCheck(CheckName)`; `getStatus()` is the aggregate.
+- Thresholds: `ReportThresholds` (opt-in via `DomainMonitorOptions`) makes SSL "expiring soon" and the WHOIS window configurable; `default()` = legacy behaviour.
+- Every result DTO is `JsonSerializable`: `json_encode($report)` — dates ISO-8601, enums as values, disabled checks `null`.
 
 ## API reference
 
@@ -42,6 +46,7 @@ $report = $monitor->check(
         httpMethod: 'GET',
         expectedOrg: 'Example Inc.',
         requiredText: 'Welcome',
+        thresholds: ReportThresholds::strict(),
     ),
 );
 
@@ -49,6 +54,41 @@ echo $report->getStatus()->value;
 ```
 
 Constructor invariant: `SecurityHeadersService` requires `HttpProbeService` (it needs the HTTP response).
+
+### Factory / builder
+
+```php
+use Rasuvaeff\DomainMonitor\DomainMonitor;
+use Rasuvaeff\DomainMonitor\DomainMonitorBuilder;
+
+$monitor = DomainMonitor::create(httpClient: $client, requestFactory: $factory, whois: $whois);
+
+$monitor = DomainMonitorBuilder::create()
+    ->withHttp(client: $client, requestFactory: $factory)
+    ->withWhois($whois)
+    ->withoutPort()
+    ->build();
+```
+
+### Read results
+
+```php
+use Rasuvaeff\DomainMonitor\CheckName;
+
+foreach ($report->getChecks() as $result) {
+    echo "{$result->check->value} {$result->status->value} {$result->reason}\n";
+}
+
+$ssl = $report->getCheck(name: CheckName::Ssl); // ?CheckResult
+
+if ($report->hasErrors()) {
+    foreach ($report->getErrors() as $error) {
+        echo "{$error->check->value}: {$error->message}\n"; // CheckError
+    }
+}
+
+$json = json_encode($report, JSON_THROW_ON_ERROR);
+```
 
 ### Normalize input
 

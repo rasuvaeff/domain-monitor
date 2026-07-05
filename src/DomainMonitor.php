@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor;
 
 use Closure;
+use Iodev\Whois\Whois;
 use Psr\Http\Client\ClientExceptionInterface;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -14,7 +17,7 @@ use Throwable;
 /**
  * @api
  */
-final readonly class DomainMonitor
+final readonly class DomainMonitor implements DomainMonitorInterface
 {
     public function __construct(
         private LoggerInterface $logger = new NullLogger(),
@@ -35,6 +38,30 @@ final readonly class DomainMonitor
         }
     }
 
+    /**
+     * Wire every check from a single PSR-18 client + PSR-17 factory (+ optional WHOIS).
+     */
+    public static function create(
+        ClientInterface $httpClient,
+        RequestFactoryInterface $requestFactory,
+        ?Whois $whois = null,
+        LoggerInterface $logger = new NullLogger(),
+    ): self {
+        return new self(
+            logger: $logger,
+            httpProbe: new HttpProbeService(httpClient: $httpClient, requestFactory: $requestFactory),
+            ssl: new SslCertificateService(),
+            whois: $whois !== null ? new WhoisService(whois: $whois) : null,
+            dns: new DnsService(),
+            port: new PortService(),
+            securityHeaders: new SecurityHeadersService(),
+            robotsTxt: new RobotsTxtService(httpClient: $httpClient, requestFactory: $requestFactory),
+            sitemap: new SitemapService(httpClient: $httpClient, requestFactory: $requestFactory),
+            content: new HttpContentCheckService(httpClient: $httpClient, requestFactory: $requestFactory),
+        );
+    }
+
+    #[\Override]
     public function check(string $host, ?DomainMonitorOptions $options = null): DomainHealthReport
     {
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);
@@ -45,6 +72,9 @@ final readonly class DomainMonitor
             timeoutSeconds: $options->timeoutSeconds,
             userAgent: $options->userAgent,
         );
+
+        /** @var list<CheckError> $errors */
+        $errors = [];
 
         $probe = null;
         $response = null;
@@ -83,9 +113,10 @@ final readonly class DomainMonitor
 
         if ($response !== null && $securityHeadersService !== null) {
             $securityHeaders = $this->runCheck(
-                name: 'security-headers',
+                name: CheckName::SecurityHeaders,
                 host: $normalizedHost,
                 callback: fn() => $securityHeadersService->check(response: $response),
+                errors: $errors,
             );
         }
 
@@ -95,6 +126,7 @@ final readonly class DomainMonitor
             response: $response,
             options: $options,
             probeOptions: $probeOptions,
+            errors: $errors,
         );
 
         $ssl = null;
@@ -102,12 +134,13 @@ final readonly class DomainMonitor
 
         if ($sslService !== null) {
             $ssl = $this->runCheck(
-                name: 'ssl',
+                name: CheckName::Ssl,
                 host: $normalizedHost,
                 callback: fn() => $sslService->check(
                     host: $normalizedHost,
                     expectedOrg: $options->expectedOrg,
                 ),
+                errors: $errors,
             );
         }
 
@@ -116,9 +149,10 @@ final readonly class DomainMonitor
 
         if ($whoisService !== null) {
             $whois = $this->runCheck(
-                name: 'whois',
+                name: CheckName::Whois,
                 host: $normalizedHost,
                 callback: fn() => $whoisService->check(host: $normalizedHost),
+                errors: $errors,
             );
         }
 
@@ -127,9 +161,10 @@ final readonly class DomainMonitor
 
         if ($dnsService !== null) {
             $dns = $this->runCheck(
-                name: 'dns',
+                name: CheckName::Dns,
                 host: $normalizedHost,
                 callback: fn() => $dnsService->check(host: $normalizedHost),
+                errors: $errors,
             );
         }
 
@@ -138,13 +173,14 @@ final readonly class DomainMonitor
 
         if ($portService !== null) {
             $port = $this->runCheck(
-                name: 'port',
+                name: CheckName::Port,
                 host: $normalizedHost,
                 callback: fn() => $portService->check(
                     host: $normalizedHost,
                     port: $options->port,
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
+                errors: $errors,
             );
         }
 
@@ -153,12 +189,13 @@ final readonly class DomainMonitor
 
         if ($robotsTxtService !== null) {
             $robotsTxt = $this->runCheck(
-                name: 'robots-txt',
+                name: CheckName::RobotsTxt,
                 host: $normalizedHost,
                 callback: fn() => $robotsTxtService->check(
                     baseUrl: $baseUrl,
                     options: $probeOptions,
                 ),
+                errors: $errors,
             );
         }
 
@@ -167,12 +204,13 @@ final readonly class DomainMonitor
 
         if ($sitemapService !== null) {
             $sitemap = $this->runCheck(
-                name: 'sitemap',
+                name: CheckName::Sitemap,
                 host: $normalizedHost,
                 callback: fn() => $sitemapService->check(
                     sitemapUrl: "{$baseUrl}/sitemap.xml",
                     options: $probeOptions,
                 ),
+                errors: $errors,
             );
         }
 
@@ -187,15 +225,23 @@ final readonly class DomainMonitor
             securityHeaders: $securityHeaders,
             robotsTxt: $robotsTxt,
             sitemap: $sitemap,
+            thresholds: $options->thresholds,
+            errors: $errors,
         );
     }
 
+    /**
+     * @param list<CheckError> $errors
+     *
+     * @param-out list<CheckError> $errors
+     */
     private function resolveContent(
         string $host,
         string $baseUrl,
         ?ResponseInterface $response,
         DomainMonitorOptions $options,
         HttpProbeOptions $probeOptions,
+        array &$errors,
     ): ?HttpContentCheck {
         $contentService = $this->content;
 
@@ -205,7 +251,7 @@ final readonly class DomainMonitor
 
         if ($response !== null) {
             return $this->runCheck(
-                name: 'content',
+                name: CheckName::Content,
                 host: $host,
                 callback: fn() => $contentService->checkFromResponse(
                     response: $response,
@@ -213,11 +259,12 @@ final readonly class DomainMonitor
                     requiredText: $options->requiredText,
                     forbiddenText: $options->forbiddenText,
                 ),
+                errors: $errors,
             );
         }
 
         return $this->runCheck(
-            name: 'content',
+            name: CheckName::Content,
             host: $host,
             callback: fn() => $contentService->check(
                 url: $baseUrl,
@@ -226,6 +273,7 @@ final readonly class DomainMonitor
                 forbiddenText: $options->forbiddenText,
                 options: $probeOptions,
             ),
+            errors: $errors,
         );
     }
 
@@ -233,21 +281,26 @@ final readonly class DomainMonitor
      * @template T
      *
      * @param Closure(): T $callback
+     * @param list<CheckError> $errors
+     *
+     * @param-out list<CheckError> $errors
      *
      * @return T|null
      */
-    private function runCheck(string $name, string $host, Closure $callback): mixed
+    private function runCheck(CheckName $name, string $host, Closure $callback, array &$errors): mixed
     {
         try {
             return $callback();
         } catch (Throwable $exception) {
             $this->logger->warning(
-                message: \sprintf('%s check failed: %s', $name, $exception->getMessage()),
+                message: \sprintf('%s check failed: %s', $name->value, $exception->getMessage()),
                 context: [
                     'host' => $host,
-                    'check' => $name,
+                    'check' => $name->value,
                 ],
             );
+
+            $errors[] = new CheckError(check: $name, message: $exception->getMessage());
 
             return null;
         }

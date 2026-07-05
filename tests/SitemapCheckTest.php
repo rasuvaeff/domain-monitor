@@ -72,4 +72,19 @@ final class SitemapCheckTest
             Assert::string($e->getMessage())->contains('URL count must be greater than or equal to 0');
         }
     }
+
+    public function serializesStatusEnumAndCounts(): void
+    {
+        $check = new SitemapCheck(status: CheckStatus::OK, httpStatus: 200, exists: true, urlCount: 42);
+
+        Assert::same(
+            $check->jsonSerialize(),
+            [
+                'status' => 'ok',
+                'httpStatus' => 200,
+                'exists' => true,
+                'urlCount' => 42,
+            ],
+        );
+    }
 }

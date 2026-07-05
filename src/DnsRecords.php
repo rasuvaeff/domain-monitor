@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor;
 
+use JsonSerializable;
+
 /**
  * @api
  */
-final readonly class DnsRecords
+final readonly class DnsRecords implements JsonSerializable
 {
     /**
      * @param string[] $a
@@ -25,4 +27,20 @@ final readonly class DnsRecords
         public array $txt = [],
         public array $cname = [],
     ) {}
+
+    /**
+     * @return array{a: string[], aaaa: string[], mx: string[], ns: string[], txt: string[], cname: string[]}
+     */
+    #[\Override]
+    public function jsonSerialize(): array
+    {
+        return [
+            'a' => $this->a,
+            'aaaa' => $this->aaaa,
+            'mx' => $this->mx,
+            'ns' => $this->ns,
+            'txt' => $this->txt,
+            'cname' => $this->cname,
+        ];
+    }
 }

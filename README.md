@@ -39,6 +39,39 @@ composer require symfony/http-client nyholm/psr7
 
 ## Quick start: a full domain check
 
+### Simplest: the factory
+
+`DomainMonitor::create()` wires every check from a single PSR-18 client + PSR-17 factory (WHOIS optional):
+
+```php
+use Iodev\Whois\Factory;
+use Nyholm\Psr7\Factory\Psr17Factory;
+use Rasuvaeff\DomainMonitor\DomainMonitor;
+use Symfony\Component\HttpClient\Psr18Client;
+
+$monitor = DomainMonitor::create(
+    httpClient: new Psr18Client(),
+    requestFactory: new Psr17Factory(),
+    whois: Factory::get()->createWhois(), // omit to disable the WHOIS check
+);
+
+$report = $monitor->check(host: 'example.com');
+
+echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
+```
+
+For granular control over which checks run, use `DomainMonitorBuilder`:
+
+```php
+use Rasuvaeff\DomainMonitor\DomainMonitorBuilder;
+
+$monitor = DomainMonitorBuilder::create()
+    ->withHttp(client: new Psr18Client(), requestFactory: new Psr17Factory())
+    ->withWhois(Factory::get()->createWhois())
+    ->withoutPort()
+    ->build();
+```
+
 ### Using the orchestrator (recommended)
 
 ```php
@@ -121,6 +154,65 @@ $report = new DomainHealthReport(
 // Aggregate status: worst among checks (OK → WARNING → CRITICAL → UNKNOWN)
 echo $report->getStatus()->value;
 ```
+
+## Reading the report
+
+`getStatus()` is the aggregate (worst of all checks). For the *why*, iterate per-check results — each carries a `CheckName`, a `CheckStatus`, and a human-readable `reason`:
+
+```php
+foreach ($report->getChecks() as $result) {
+    printf("%-16s %-8s %s\n", $result->check->value, $result->status->value, $result->reason);
+}
+// probe            ok       HTTP 200
+// ssl              ok       Certificate valid, expires in 61 day(s)
+// whois            warning  Domain expires in 12 day(s)
+
+$ssl = $report->getCheck(name: CheckName::Ssl); // ?CheckResult
+```
+
+### Errors vs disabled checks
+
+A check that was **not configured** is `null`. A check that **ran but threw** is recorded separately — it appears in `getChecks()` as `UNKNOWN` (never inflating the aggregate) and in `getErrors()`:
+
+```php
+if ($report->hasErrors()) {
+    foreach ($report->getErrors() as $error) {
+        // CheckError { check: CheckName, message: string }
+        echo "{$error->check->value}: {$error->message}\n";
+    }
+}
+```
+
+Treat `getStatus() === CheckStatus::OK` together with `hasErrors() === true` as "OK but incomplete".
+
+### Thresholds
+
+By default SSL is `CRITICAL` only once expired, and WHOIS warns within 30 days. Opt in to "SSL expiring soon = warning" (and tune the WHOIS window) with `ReportThresholds`:
+
+```php
+use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
+use Rasuvaeff\DomainMonitor\ReportThresholds;
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(
+        thresholds: ReportThresholds::strict(), // SSL warns 14 days before expiry
+        // or: new ReportThresholds(sslWarnDays: 30, whoisWarnDays: 45)
+    ),
+);
+```
+
+`ReportThresholds::default()` reproduces pre-1.2.0 behaviour exactly.
+
+### Serialization
+
+Every result DTO implements `JsonSerializable`, so the whole report encodes in one call — dates as ISO-8601, enums as their values, disabled checks as `null`:
+
+```php
+$json = json_encode($report, JSON_THROW_ON_ERROR);
+```
+
+The `checks` array is the evaluated snapshot (frozen `reason` strings); nested raw DTOs (`ssl.validUntil`, `whois.expirationDate`) stay absolute so a stored blob is a faithful record.
 
 ## Services
 
@@ -263,8 +355,11 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 
 | Class | What it does |
 |---|---|
-| `DomainMonitor` | Orchestrator: runs all configured services, reuses HTTP response for probe + security headers + content → `DomainHealthReport` |
-| `DomainMonitorOptions` | VO for orchestrator: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText |
+| `DomainMonitor` | Orchestrator: runs all configured services, reuses HTTP response for probe + security headers + content → `DomainHealthReport`; `create()` factory + implements `DomainMonitorInterface` |
+| `DomainMonitorInterface` | Contract for `DomainMonitor` — mock/decorate it |
+| `DomainMonitorBuilder` | Fluent, granular composition of the orchestrator (`withHttp`, `withWhois`, `withoutPort`, …) |
+| `DomainMonitorOptions` | VO for orchestrator: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds |
+| `ReportThresholds` | VO: SSL expiry-warning window (`sslWarnDays`) + WHOIS warning window (`whoisWarnDays`); `default()` / `strict()` |
 | `HostNormalizer` | Normalize hosts/URLs (lowercase, strip scheme/port/path, optional IDN) |
 | `HttpProbeService` | PSR-18 GET/HEAD probe with measured time → `ProbeResult`; `probeWithResponse()` for response reuse |
 | `HttpProbeWithResponse` | DTO: `ProbeResult` + `ResponseInterface` (for response reuse) |
@@ -286,7 +381,10 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `SitemapCheck` | DTO: `exists`, `httpStatus`, `urlCount` |
 | `HttpContentCheckService` | Status code + required/forbidden keyword check → `HttpContentCheck`; `checkFromResponse()` for response reuse |
 | `HttpContentCheck` | DTO: `status`, `httpStatus`, `?finalUrl`, text flags |
-| `DomainHealthReport` | Composite DTO for all check results → `CheckStatus` |
+| `DomainHealthReport` | Composite DTO for all check results; `getStatus()` aggregate, `getChecks()`/`getCheck()` per-check, `getErrors()`/`hasErrors()`, `JsonSerializable` |
+| `CheckResult` | DTO: `check` (`CheckName`), `status` (`CheckStatus`), `reason` (human-readable) |
+| `CheckError` | DTO: `check` (`CheckName`), `message` — a check that ran but threw |
+| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap` |
 | `CheckStatus` | Enum: `OK`, `WARNING`, `CRITICAL`, `UNKNOWN` |
 
 ## Security

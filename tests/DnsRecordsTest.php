@@ -43,4 +43,28 @@ final class DnsRecordsTest
         Assert::same($records->txt, ['v=spf1']);
         Assert::same($records->cname, ['example.com']);
     }
+
+    public function serializesEveryRecordGroup(): void
+    {
+        $records = new DnsRecords(
+            a: ['1.2.3.4'],
+            aaaa: ['::1'],
+            mx: ['mail.example.com'],
+            ns: ['ns1.example.com'],
+            txt: ['v=spf1'],
+            cname: ['example.com'],
+        );
+
+        Assert::same(
+            $records->jsonSerialize(),
+            [
+                'a' => ['1.2.3.4'],
+                'aaaa' => ['::1'],
+                'mx' => ['mail.example.com'],
+                'ns' => ['ns1.example.com'],
+                'txt' => ['v=spf1'],
+                'cname' => ['example.com'],
+            ],
+        );
+    }
 }

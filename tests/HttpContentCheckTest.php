@@ -96,4 +96,26 @@ final class HttpContentCheckTest
 
         Assert::same($check->httpStatus, 599);
     }
+
+    public function serializesStatusEnumToItsValue(): void
+    {
+        $check = new HttpContentCheck(
+            status: CheckStatus::CRITICAL,
+            httpStatus: 500,
+            finalUrl: 'https://example.com/final',
+            requiredTextFound: false,
+            forbiddenTextFound: true,
+        );
+
+        Assert::same(
+            $check->jsonSerialize(),
+            [
+                'status' => 'critical',
+                'httpStatus' => 500,
+                'finalUrl' => 'https://example.com/final',
+                'requiredTextFound' => false,
+                'forbiddenTextFound' => true,
+            ],
+        );
+    }
 }
