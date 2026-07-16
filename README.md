@@ -7,6 +7,7 @@
 [![Psalm level](https://img.shields.io/badge/psalm-level_1-blue.svg)](https://github.com/rasuvaeff/domain-monitor/actions/workflows/static-analysis.yml)
 [![PHP](https://img.shields.io/packagist/dependency-v/rasuvaeff/domain-monitor/php)](https://packagist.org/packages/rasuvaeff/domain-monitor)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE.md)
+[Русская версия](README.ru.md)
 
 A modular domain monitoring toolkit for PHP 8.3+. Zero-framework, PSR-compatible, with small immutable DTOs and focused stateless services. Each checker does one thing — you compose them as needed.
 
