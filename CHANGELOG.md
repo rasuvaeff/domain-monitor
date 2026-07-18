@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 — 2026-07-18
 
 - `ReportComparator` diffs two `DomainHealthReport` snapshots of the same host into a `list<StatusTransition>` (or a `ReportDiff` wrapper via `compare()`), turning stateless snapshots into alertable status changes without adding storage to the package.
 - New `StatusTransition` DTO (`check`, `from`, `to`, `kind`) and `TransitionKind` enum (`appeared`, `disappeared`, `degraded`, `recovered`, `changed`); transitions to/from `UNKNOWN` are reported as `changed` (severity is not comparable). All new types implement `JsonSerializable`.
