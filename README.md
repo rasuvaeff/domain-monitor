@@ -215,6 +215,43 @@ $json = json_encode($report, JSON_THROW_ON_ERROR);
 
 The `checks` array is the evaluated snapshot (frozen `reason` strings); nested raw DTOs (`ssl.validUntil`, `whois.expirationDate`) stay absolute so a stored blob is a faithful record.
 
+## Detecting status changes
+
+A `DomainHealthReport` is a single snapshot. To alert only when something *changes*, keep the previous snapshot (your application owns storage) and diff it against the current one with `ReportComparator` — a stateless helper that returns one `StatusTransition` per changed check:
+
+```php
+use Rasuvaeff\DomainMonitor\ReportComparator;
+use Rasuvaeff\DomainMonitor\TransitionKind;
+
+$comparator = new ReportComparator();
+
+$previous = $storage->latest(host: 'example.com'); // your storage, may be null on first run
+$current = $monitor->check(host: 'example.com');
+
+$diff = $comparator->compare(previous: $previous ?? $current, current: $current);
+
+if ($diff->hasChanges()) {
+    foreach ($diff->getTransitions() as $t) {
+        // $t->check, $t->from (?CheckStatus), $t->to (?CheckStatus), $t->kind
+        printf("%s: %s -> %s (%s)\n", $t->check->value, $t->from?->value ?? '—', $t->to?->value ?? '—', $t->kind->value);
+    }
+}
+
+$storage->save(host: 'example.com', report: $current); // for the next run
+```
+
+`compare()` returns a `ReportDiff` wrapper (`hasChanges()`, `getTransitions()`, `worstTransition()`); `diff()` returns the raw `list<StatusTransition>`. Each transition carries a `TransitionKind`:
+
+| Kind | Meaning |
+|---|---|
+| `Appeared` | Check absent before, present now (`from` is `null`) |
+| `Disappeared` | Check present before, absent now (`to` is `null`) |
+| `Degraded` | Status got worse (e.g. `ok → critical`) |
+| `Recovered` | Status got better (e.g. `critical → ok`) |
+| `Changed` | Status changed to or from `UNKNOWN`, where severity is not comparable |
+
+`ReportComparator` compares by `CheckName` and is deterministic (`diff($r, $r)` is always `[]`). It has no notion of scheduling, storage, or delivery — feeding transitions to webhooks or a realtime channel is the application's job. A ready-made pipeline (scheduling, history, webhook + Centrifugo alerts, a status page) lives in `rasuvaeff/monitor-dashboard`.
+
 ## Services
 
 ### HTTP probing

@@ -186,7 +186,44 @@ $report = $monitor->check(
 ```php
 $json = json_encode($report, JSON_THROW_ON_ERROR);
 ```
-Массив «checks» представляет собой оцененный снимок (замороженные строки «причины»); вложенные необработанные DTO (`ssl.validUntil`, `whois.expirationDate`) остаются абсолютными, поэтому сохраненный большой двоичный объект является достоверной записью. @@ЛИНИЯ@@
+Массив «checks» представляет собой оцененный снимок (замороженные строки «причины»); вложенные необработанные DTO (`ssl.validUntil`, `whois.expirationDate`) остаются абсолютными, поэтому сохраненный большой двоичный объект является достоверной записью.
+
+## Обнаружение изменений статуса
+
+`DomainHealthReport` — это один снимок. Чтобы алертить только при *изменении*, храните предыдущий снимок (хранение — на стороне приложения) и сравнивайте его с текущим через `ReportComparator` — stateless-хелпер, возвращающий по одному `StatusTransition` на каждую изменившуюся проверку:
+
+```php
+use Rasuvaeff\DomainMonitor\ReportComparator;
+use Rasuvaeff\DomainMonitor\TransitionKind;
+
+$comparator = new ReportComparator();
+
+$previous = $storage->latest(host: 'example.com'); // ваше хранилище, при первом запуске может быть null
+$current = $monitor->check(host: 'example.com');
+
+$diff = $comparator->compare(previous: $previous ?? $current, current: $current);
+
+if ($diff->hasChanges()) {
+    foreach ($diff->getTransitions() as $t) {
+        printf("%s: %s -> %s (%s)\n", $t->check->value, $t->from?->value ?? '—', $t->to?->value ?? '—', $t->kind->value);
+    }
+}
+
+$storage->save(host: 'example.com', report: $current); // для следующего запуска
+```
+
+`compare()` возвращает обёртку `ReportDiff` (`hasChanges()`, `getTransitions()`, `worstTransition()`); `diff()` — сырой `list<StatusTransition>`. Каждый transition несёт `TransitionKind`:
+
+| Kind | Значение |
+|---|---|
+| `Appeared` | Проверки не было, теперь есть (`from` = `null`) |
+| `Disappeared` | Проверка была, теперь отсутствует (`to` = `null`) |
+| `Degraded` | Статус ухудшился (`ok → critical`) |
+| `Recovered` | Статус улучшился (`critical → ok`) |
+| `Changed` | Статус изменился в/из `UNKNOWN`, где severity несравнима |
+
+`ReportComparator` сравнивает по `CheckName` и детерминирован (`diff($r, $r)` всегда `[]`). Он ничего не знает про расписание, хранение и доставку — передача transitions в webhooks или realtime-канал остаётся задачей приложения. Готовый pipeline (расписание, история, webhook + Centrifugo алерты, status-страница) — в `rasuvaeff/monitor-dashboard`.
+
 ## Услуги
 ### HTTP-зондирование
 ```php
