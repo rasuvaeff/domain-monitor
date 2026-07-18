@@ -11,13 +11,6 @@ use JsonSerializable;
  */
 final readonly class DomainHealthReport implements JsonSerializable
 {
-    private const array STATUS_ORDER = [
-        CheckStatus::UNKNOWN->value => 0,
-        CheckStatus::OK->value => 1,
-        CheckStatus::WARNING->value => 2,
-        CheckStatus::CRITICAL->value => 3,
-    ];
-
     /**
      * @param list<CheckError> $errors
      */
@@ -107,7 +100,7 @@ final readonly class DomainHealthReport implements JsonSerializable
         $worst = CheckStatus::UNKNOWN;
 
         foreach ($this->getChecks() as $result) {
-            if (self::STATUS_ORDER[$result->status->value] > self::STATUS_ORDER[$worst->value]) {
+            if ($result->status->severity() > $worst->severity()) {
                 $worst = $result->status;
             }
         }

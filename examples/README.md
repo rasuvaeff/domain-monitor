@@ -10,6 +10,7 @@
 | `robots.php` | `/robots.txt` availability + sitemap extraction | Yes |
 | `sitemap.php` | Sitemap availability + URL count | Yes |
 | `report.php` | Building a `DomainHealthReport` from DTOs | No |
+| `report-diff.php` | Diffing two reports into per-check status transitions | No |
 
 ## Running
 
@@ -27,8 +28,9 @@ php examples/security-headers.php https://example.com
 php examples/port.php example.com 443
 ```
 
-Report example builds a composite DTO — no network needed:
+Report and diff examples build composite DTOs — no network needed:
 
 ```bash
 php examples/report.php
+php examples/report-diff.php
 ```

@@ -20,4 +20,12 @@ final class CheckStatusTest
         Assert::same(CheckStatus::CRITICAL->value, 'critical');
         Assert::same(CheckStatus::UNKNOWN->value, 'unknown');
     }
+
+    public function ordersSeverityWorstWinsWithUnknownLowest(): void
+    {
+        Assert::same(CheckStatus::UNKNOWN->severity(), 0);
+        Assert::same(CheckStatus::OK->severity(), 1);
+        Assert::same(CheckStatus::WARNING->severity(), 2);
+        Assert::same(CheckStatus::CRITICAL->severity(), 3);
+    }
 }

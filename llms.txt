@@ -90,6 +90,27 @@ if ($report->hasErrors()) {
 $json = json_encode($report, JSON_THROW_ON_ERROR);
 ```
 
+### Diff two reports into status transitions
+
+```php
+use Rasuvaeff\DomainMonitor\ReportComparator;
+use Rasuvaeff\DomainMonitor\TransitionKind;
+
+// Stateless: the app owns the previous snapshot (storage). diff($r, $r) === [].
+$diff = (new ReportComparator())->compare(previous: $previousReport, current: $currentReport);
+
+if ($diff->hasChanges()) {
+    foreach ($diff->getTransitions() as $t) {
+        // StatusTransition: check (CheckName), from (?CheckStatus), to (?CheckStatus), kind (TransitionKind)
+        echo "{$t->check->value} {$t->from?->value} -> {$t->to?->value} {$t->kind->value}\n";
+    }
+    $worst = $diff->worstTransition(); // ?StatusTransition, most severe `to`
+}
+// diff(): list<StatusTransition>; compare(): ReportDiff wrapper.
+// TransitionKind: Appeared (from=null), Disappeared (to=null), Degraded, Recovered,
+// Changed (to/from UNKNOWN — severity not comparable). All types are JsonSerializable.
+```
+
 ### Normalize input
 
 ```php
