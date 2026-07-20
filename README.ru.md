@@ -1,4 +1,5 @@
-# Расуваефф/домен-монитор
+# rasuvaeff/domain-monitor
+
 [![Latest Stable Version](https://poser.pugx.org/rasuvaeff/domain-monitor/v)](https://packagist.org/packages/rasuvaeff/domain-monitor)
 [![Total Downloads](https://poser.pugx.org/rasuvaeff/domain-monitor/downloads)](https://packagist.org/packages/rasuvaeff/domain-monitor)
 [![Build](https://github.com/rasuvaeff/domain-monitor/actions/workflows/build.yml/badge.svg)](https://github.com/rasuvaeff/domain-monitor/actions/workflows/build.yml)
@@ -6,33 +7,49 @@
 [![Psalm level](https://img.shields.io/badge/psalm-level_1-blue.svg)](https://github.com/rasuvaeff/domain-monitor/actions/workflows/static-analysis.yml)
 [![PHP](https://img.shields.io/packagist/dependency-v/rasuvaeff/domain-monitor/php)](https://packagist.org/packages/rasuvaeff/domain-monitor)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE.md)
-Модульный набор инструментов для мониторинга домена для PHP 8.3+. Нулевая платформа, PSR-совместимая, с небольшими неизменяемыми DTO и специализированными сервисами без сохранения состояния. Каждая шашка делает одно — вы составляете их по мере необходимости.
+[English version](README.md)
 
- **Проверка:** HTTP-зонд · SSL-сертификаты · WHOIS · DNS · TCP-порты · заголовки безопасности · `robots.txt` · карты сайта.
+Модульный набор инструментов для мониторинга доменов на PHP 8.3+. Без привязки
+к фреймворку, PSR-совместимый, с небольшими иммутабельными DTO и узкими
+stateless-сервисами. Каждый чекер делает одну вещь — вы компонуете их по мере
+необходимости.
 
- **Не включает:** планирование, сохранение, кэширование или асинхронные средства выполнения. В пакет входят строительные блоки и оркестратор DomainMonitor; ваше приложение обеспечивает рабочий процесс.
+**Проверки:** HTTP-пробы · SSL-сертификаты · WHOIS · DNS · TCP-порты ·
+заголовки безопасности · `robots.txt` · sitemap-ы.
 
- > Используете помощника по программированию с искусственным интеллектом? [llms.txt](llms.txt) содержит компактную ссылку на API. @@ЛИНИЯ@@
+**Не входит:** планирование, персистентность, кэширование или асинхронные
+раннеры. Пакет предоставляет строительные блоки и оркестратор `DomainMonitor`;
+рабочий процесс обеспечивает ваше приложение.
+
+> Используете AI-ассистента? В [llms.txt](llms.txt) — компактный API-справочник.
+
 ## Требования
+
 - PHP 8.3+
- - `ext-openssl`, `ext-simplexml`
- - Клиент PSR-18 и фабрика запросов PSR-17 для проверок на основе HTTP
- - `io-developer/php-whois` (извлекает `ext-curl`, `ext-mbstring`)
- - `ext-intl` не является обязательным (нормализация IDN) только)
- - `ext-sockets` не является обязательным (только разрешение DNS)
+- `ext-openssl`, `ext-simplexml`
+- PSR-18 клиент и PSR-17 request factory для HTTP-проверок
+- `io-developer/php-whois` (тянет `ext-curl`, `ext-mbstring`)
+- `ext-intl` опционально (только для нормализации IDN)
+- `ext-sockets` опционально (только для DNS-резолва)
 
 ## Установка
+
 ```bash
 composer require rasuvaeff/domain-monitor
 ```
-Для проверок HTTP вам также понадобится реализация PSR-18/PSR-17:
+
+Для HTTP-проверок также понадобится реализация PSR-18/PSR-17:
 
 ```bash
 composer require symfony/http-client nyholm/psr7
 ```
+
 ## Быстрый старт: полная проверка домена
-### Самый простой: завод.
-`DomainMonitor::create()` передает каждую проверку от одного клиента PSR-18 + фабрики PSR-17 (WHOIS необязательно):
+
+### Самый простой путь: фабрика
+
+`DomainMonitor::create()` собирает все проверки из одного PSR-18 клиента +
+PSR-17 фабрики (WHOIS опционален):
 
 ```php
 use Iodev\Whois\Factory;
@@ -50,7 +67,8 @@ $report = $monitor->check(host: 'example.com');
 
 echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 ```
-Для детального контроля над тем, какие проверки выполняются, используйте `DomainMonitorBuilder`:
+
+Для гранулярного контроля над набором проверок используйте `DomainMonitorBuilder`:
 
 ```php
 use Rasuvaeff\DomainMonitor\DomainMonitorBuilder;
@@ -61,7 +79,9 @@ $monitor = DomainMonitorBuilder::create()
     ->withoutPort()
     ->build();
 ```
-### Использование оркестратора (рекомендуется)
+
+### Через оркестратор (рекомендуется)
+
 ```php
 use Iodev\Whois\Factory;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -102,8 +122,14 @@ $report = $monitor->check(
 
 echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 ```
-Службы не являются обязательными — укажите null (или опустите), чтобы отключить проверку. Оркестратор повторно использует один ответ HTTP для проверки + заголовков безопасности + проверки содержимого. Неудачные проверки перехватываются, протоколируются через PSR-3 и исключаются из отчета. @@ЛИНИЯ@@
+
+Сервисы опциональны — передайте `null` (или опустите), чтобы отключить проверку.
+Оркестратор переиспользует один HTTP-ответ для пробы + заголовков безопасности +
+проверки контента. Упавшие проверки перехватываются, логируются через PSR-3 и
+опускаются в отчёте.
+
 ### Ручная композиция
+
 ```php
 use DateTimeImmutable;
 use Iodev\Whois\Factory;
@@ -139,8 +165,12 @@ $report = new DomainHealthReport(
 // Aggregate status: worst among checks (OK → WARNING → CRITICAL → UNKNOWN)
 echo $report->getStatus()->value;
 ```
-## Чтение отчета
-`getStatus()` — это совокупность (худшая из всех проверок). Чтобы узнать *почему*, повторите результаты каждой проверки — каждый из них содержит «CheckName», «CheckStatus» и удобочитаемую «причину»:
+
+## Чтение отчёта
+
+`getStatus()` — это агрегированный статус (худший среди всех проверок). Чтобы
+понять *почему*, обойдите результаты каждой проверки — каждый несёт `CheckName`,
+`CheckStatus` и человекочитаемый `reason`:
 
 ```php
 foreach ($report->getChecks() as $result) {
@@ -152,8 +182,12 @@ foreach ($report->getChecks() as $result) {
 
 $ssl = $report->getCheck(name: CheckName::Ssl); // ?CheckResult
 ```
-### Ошибки против отключенных проверок
-Проверка, которая была **не настроена**, имеет значение null. Проверка, которая **выполнялась, но выбрасывалась**, записывается отдельно — она отображается в `getChecks()` как `UNKNOWN` (никогда не раздувает агрегат) и в `getErrors()`:
+
+### Ошибки против отключённых проверок
+
+Проверка, которая **не настроена** — это `null`. Проверка, которая **запускалась,
+но упала** — записывается отдельно: она появляется в `getChecks()` как `UNKNOWN`
+(никогда не завышает агрегат) и в `getErrors()`:
 
 ```php
 if ($report->hasErrors()) {
@@ -163,9 +197,15 @@ if ($report->hasErrors()) {
     }
 }
 ```
-Считайте `getStatus() === CheckStatus::OK` вместе с `hasErrors() === true` как "ОК, но неполно". @@ЛИНИЯ@@
+
+Считайте `getStatus() === CheckStatus::OK` вместе с `hasErrors() === true` как
+«OK, но неполно».
+
 ### Пороги
-По умолчанию SSL становится «КРИТИЧЕСКИМ» только по истечении срока действия, а WHOIS предупреждает в течение 30 дней. Включите параметр «Срок действия SSL скоро истечет = предупреждение» (и настройте окно WHOIS) с помощью ReportThresholds:
+
+По умолчанию SSL становится `CRITICAL` только после истечения срока, а WHOIS
+предупреждает за 30 дней. Включите «скорого истечения SSL = warning» (и
+настройте окно WHOIS) через `ReportThresholds`:
 
 ```php
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
@@ -179,18 +219,29 @@ $report = $monitor->check(
     ),
 );
 ```
-`ReportThresholds::default()` точно воспроизводит поведение до версии 1.2.0. @@ЛИНИЯ@@
+
+`ReportThresholds::default()` точно воспроизводит поведение до версии 1.2.0.
+
 ### Сериализация
-Каждый результат DTO реализует `JsonSerializable`, поэтому весь отчет кодируется за один вызов: даты как ISO-8601, перечисления как их значения, отключенные проверки как `null`:
+
+Каждый DTO результата реализует `JsonSerializable`, поэтому весь отчёт
+кодируется одним вызовом — даты как ISO-8601, enum-ы как их значения,
+отключённые проверки как `null`:
 
 ```php
 $json = json_encode($report, JSON_THROW_ON_ERROR);
 ```
-Массив «checks» представляет собой оцененный снимок (замороженные строки «причины»); вложенные необработанные DTO (`ssl.validUntil`, `whois.expirationDate`) остаются абсолютными, поэтому сохраненный большой двоичный объект является достоверной записью.
+
+Массив `checks` — это вычисленный снимок (замороженные строки `reason`);
+вложенные сырые DTO (`ssl.validUntil`, `whois.expirationDate`) остаются
+абсолютными, поэтому сохранённый blob — достоверная запись.
 
 ## Обнаружение изменений статуса
 
-`DomainHealthReport` — это один снимок. Чтобы алертить только при *изменении*, храните предыдущий снимок (хранение — на стороне приложения) и сравнивайте его с текущим через `ReportComparator` — stateless-хелпер, возвращающий по одному `StatusTransition` на каждую изменившуюся проверку:
+`DomainHealthReport` — это одиночный снимок. Чтобы алертить только при
+*изменении*, храните предыдущий снимок (хранение — на стороне приложения) и
+сравнивайте его с текущим через `ReportComparator` — stateless-хелпер,
+возвращающий по одному `StatusTransition` на каждую изменившуюся проверку:
 
 ```php
 use Rasuvaeff\DomainMonitor\ReportComparator;
@@ -205,6 +256,7 @@ $diff = $comparator->compare(previous: $previous ?? $current, current: $current)
 
 if ($diff->hasChanges()) {
     foreach ($diff->getTransitions() as $t) {
+        // $t->check, $t->from (?CheckStatus), $t->to (?CheckStatus), $t->kind
         printf("%s: %s -> %s (%s)\n", $t->check->value, $t->from?->value ?? '—', $t->to?->value ?? '—', $t->kind->value);
     }
 }
@@ -212,20 +264,28 @@ if ($diff->hasChanges()) {
 $storage->save(host: 'example.com', report: $current); // для следующего запуска
 ```
 
-`compare()` возвращает обёртку `ReportDiff` (`hasChanges()`, `getTransitions()`, `worstTransition()`); `diff()` — сырой `list<StatusTransition>`. Каждый transition несёт `TransitionKind`:
+`compare()` возвращает обёртку `ReportDiff` (`hasChanges()`, `getTransitions()`,
+`worstTransition()`); `diff()` возвращает сырой `list<StatusTransition>`. Каждый
+transition несёт `TransitionKind`:
 
 | Kind | Значение |
 |---|---|
 | `Appeared` | Проверки не было, теперь есть (`from` = `null`) |
 | `Disappeared` | Проверка была, теперь отсутствует (`to` = `null`) |
-| `Degraded` | Статус ухудшился (`ok → critical`) |
-| `Recovered` | Статус улучшился (`critical → ok`) |
-| `Changed` | Статус изменился в/из `UNKNOWN`, где severity несравнима |
+| `Degraded` | Статус ухудшился (например, `ok → critical`) |
+| `Recovered` | Статус улучшился (например, `critical → ok`) |
+| `Changed` | Статус изменился в/из `UNKNOWN`, где severity не сравнима |
 
-`ReportComparator` сравнивает по `CheckName` и детерминирован (`diff($r, $r)` всегда `[]`). Он ничего не знает про расписание, хранение и доставку — передача transitions в webhooks или realtime-канал остаётся задачей приложения. Готовый pipeline (расписание, история, webhook + Centrifugo алерты, status-страница) — в `rasuvaeff/monitor-dashboard`.
+`ReportComparator` сравнивает по `CheckName` и детерминирован (`diff($r, $r)`
+всегда `[]`). Он ничего не знает про расписание, хранение и доставку — передача
+transition-ов в webhook-и или realtime-канал остаётся задачей приложения.
+Готовый пайплайн (расписание, история, webhook + Centrifugo-алерты,
+status-страница) живёт в `rasuvaeff/monitor-dashboard`.
 
-## Услуги
-### HTTP-зондирование
+## Сервисы
+
+### HTTP-пробы
+
 ```php
 use Rasuvaeff\DomainMonitor\HttpProbeOptions;
 use Rasuvaeff\DomainMonitor\HttpProbeService;
@@ -239,8 +299,13 @@ $probe = (new HttpProbeService(httpClient: $client, requestFactory: $requestFact
 // ProbeResult { status: 200, totalTime: 0.12 }
 var_dump($probe->status, $probe->totalTime);
 ```
-`timeoutSeconds` используется **только с максимальной эффективностью** — PSR-18 не имеет стандартного API таймаута. Такие клиенты, как Symfony, чтят это; клиенты, такие как сырой Guzzle, могут этого не делать. @@ЛИНИЯ@@
+
+`timeoutSeconds` — **best-effort**: у PSR-18 нет стандартного API для таймаута.
+Такие клиенты, как Symfony, его учитывают; клиенты вроде сырого Guzzle — могут
+не учитывать.
+
 ### SSL
+
 ```php
 use Rasuvaeff\DomainMonitor\SslCertificateService;
 
@@ -256,8 +321,12 @@ if ($cert !== null) {
     echo $cert->issuer;                 // "Example CA"
 }
 ```
-Примечание. Проверка SSL считывает сертификат узла **без проверки цепочки доверия** — это инструмент мониторинга, а не средство проверки PKI. @@ЛИНИЯ@@
+
+Примечание: SSL-проверка читает peer-сертификат **без верификации цепочки
+доверия** — это инструмент мониторинга, а не PKI-валидатор.
+
 ### WHOIS
+
 ```php
 use Iodev\Whois\Factory;
 use Rasuvaeff\DomainMonitor\WhoisService;
@@ -268,8 +337,12 @@ $info = (new WhoisService(whois: Factory::get()->createWhois()))
 // TldInfo { domain, ?registrar, ?expirationDate, states }
 echo $info->daysUntilExpiry(); // null if expirationDate missing
 ```
-Резервный вариант: в случае сбоя www.example.com служба автоматически повторяет попытку с example.com. @@ЛИНИЯ@@
+
+Фолбэк: если `www.example.com` падает, сервис автоматически ретраит с
+`example.com`.
+
 ### DNS
+
 ```php
 use Rasuvaeff\DomainMonitor\DnsService;
 
@@ -278,14 +351,18 @@ $records = (new DnsService())->check(host: 'example.com');
 // DnsRecords { a: ['93.184.216.34'], mx: ['...'], ns: ['...'], ... }
 var_dump($records->a, $records->mx);
 ```
+
 ### Проверка порта (TCP)
+
 ```php
 use Rasuvaeff\DomainMonitor\PortService;
 
 $check = (new PortService())->check(host: 'example.com', port: 443, timeoutSeconds: 5.0);
 // PortCheck { status: OK, connectTime: 0.04, error: null }
 ```
+
 ### Заголовки безопасности
+
 ```php
 use Rasuvaeff\DomainMonitor\SecurityHeadersService;
 
@@ -293,7 +370,9 @@ use Rasuvaeff\DomainMonitor\SecurityHeadersService;
 $headers = (new SecurityHeadersService())->check(response: $response);
 // SecurityHeadersCheck { hasHsts: true, hasContentSecurityPolicy: false, ... }
 ```
+
 ### robots.txt
+
 ```php
 use Rasuvaeff\DomainMonitor\RobotsTxtService;
 
@@ -301,7 +380,9 @@ $robots = (new RobotsTxtService(httpClient: $client, requestFactory: $requestFac
     ->check(baseUrl: 'https://example.com');
 // RobotsTxtCheck { exists: true, sitemaps: ['https://example.com/sitemap.xml'] }
 ```
-### Карта сайта
+
+### Sitemap
+
 ```php
 use Rasuvaeff\DomainMonitor\SitemapService;
 
@@ -309,7 +390,9 @@ $sitemap = (new SitemapService(httpClient: $client, requestFactory: $requestFact
     ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 // SitemapCheck { exists: true, urlCount: 42 }
 ```
+
 ### Проверка контента
+
 ```php
 use Rasuvaeff\DomainMonitor\HttpContentCheckService;
 
@@ -322,7 +405,9 @@ $content = (new HttpContentCheckService(httpClient: $client, requestFactory: $re
     );
 // HttpContentCheck { status: OK, requiredTextFound: true, forbiddenTextFound: false }
 ```
-### Создать отчет
+
+### Сборка отчёта
+
 ```php
 use Rasuvaeff\DomainMonitor\{DomainHealthReport, CheckStatus};
 use Rasuvaeff\DomainMonitor\ProbeResult;
@@ -337,73 +422,84 @@ $report = new DomainHealthReport(
 );
 echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 ```
-## Полная ссылка на API
-| Класс | Что он делает |
- |---|---|
- | `DomainMonitor` | Оркестратор: запускает все настроенные службы, повторно использует HTTP-ответ для проверки + заголовки безопасности + контент → `DomainHealthReport`; Фабрика `create()` + реализует `DomainMonitorInterface` |
- | `DomainMonitorInterface` | Контракт для `DomainMonitor` — макетируем/украшаем его |
- | `DomainMonitorBuilder` | Свободный, детализированный состав оркестратора (`withHttp`, `withWhois`, `withoutPort`, …) |
- | `DomainMonitorOptions` | VO для оркестратора: порт, тайм-аут, метод, userAgent, ожидаемыйОрг, ожидаемыйстатус, требуемыйтекст, запрещенныйтекст, пороговые значения |
- | `Пороги отчета` | VO: окно предупреждения об истечении срока действия SSL (`sslWarnDays`) + окно предупреждения WHOIS (`whoisWarnDays`); `default()` / `strict()` |
- | `HostNormalizer` | Нормализовать хосты/URL-адреса (строчные буквы, схема разделения/порт/путь, необязательный IDN) |
- | `HttpProbeService` | PSR-18 GET/HEAD зонд с измеренным временем → `ProbeResult`; `probeWithResponse()` для повторного использования ответа |
- | `HttpProbeWithResponse` | DTO: `ProbeResult` + `ResponseInterface` (для повторного использования ответа) |
- | `HttpProbeOptions` | Настройка метода, заголовков, тайм-аута и пользовательского агента для HTTP-зондов |
- | `ProbeResult` | DTO: `статус`, `totalTime` |
- | `SslCertificateService` | Чтение удаленного сертификата SSL; дополнительный организационный фильтр → `SslCertificate` |
- | `SslCertificate` | DTO: `validFrom`, `validUntil`, `subjectCn`, `issuer` + помощники по истечении срока действия |
- | `WhoisService` | Загрузить и сопоставить данные поставщика WHOIS → `TldInfo` |
- | `ТлдИнфо` | DTO: `домен`, `?регистратор`, `?expirationDate`, `состояния` |
- | `ДнсСервис` | оболочка `dns_get_record()` → `DnsRecords` |
- | `DnsRecords` | DTO: `a`, `aaaa`, `mx`, `ns`, `txt`, `cname` |
- | `ПортСервис` | Доступность TCP через `stream_socket_client()` → `PortCheck` |
- | `ПортЧек` | DTO: `status`, `host`, `port`, `connectTime`, `?error` |
- | `SecurityHeadersService` | Проверьте HSTS/CSP/XFO/XCTO в ответе PSR-7 → `SecurityHeadersCheck` |
- | `SecurityHeadersCheck` | DTO: флаги для каждого заголовка + списки присутствия/отсутствия |
- | `RobotsTxtService` | Получить `/robots.txt` + извлечь подсказки карты сайта → `RobotsTxtCheck` |
- | `РоботыTxtCheck` | DTO: `exists`, `httpStatus`, `sitemaps[]` |
- | `СайтмапСервис` | Получить карту сайта + подсчитать записи `<url>` → `SitemapCheck` |
- | `Проверка карты сайта` | DTO: `exists`, `httpStatus`, `urlCount` |
- | `HttpContentCheckService` | Код состояния + проверка обязательного/запрещенного ключевого слова → `HttpContentCheck`; `checkFromResponse()` для повторного использования ответа |
- | `HttpContentCheck` | DTO: `status`, `httpStatus`, `?finalUrl`, текстовые флаги |
- | `DomainHealthReport` | Составной DTO для всех результатов проверки; `getStatus()` агрегат, `getChecks()`/`getCheck()` для каждой проверки, `getErrors()`/`hasErrors()`, `JsonSerializable` |
-| `ПроверитьРезультат` | DTO: `проверка` (`CheckName`), `статус` (`CheckStatus`), `причина` (читабельно для человека) |
- | `CheckError` | DTO: `check` (`CheckName`), `message` — проверка, которая выполнялась, но выдала ошибку |
- | `Проверочное имя` | Перечисление: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap` |
- | `Проверить статус` | Перечисление: `ОК`, `ПРЕДУПРЕЖДЕНИЕ`, `КРИТИЧНО`, `НЕИЗВЕСТНО` | @@ЛИНИЯ@@
+
+## Полный API-справочник
+
+| Класс | Что делает |
+|---|---|
+| `DomainMonitor` | Оркестратор: запускает все настроенные сервисы, переиспользует HTTP-ответ для пробы + заголовков безопасности + контента → `DomainHealthReport`; фабрика `create()` + реализует `DomainMonitorInterface` |
+| `DomainMonitorInterface` | Контракт для `DomainMonitor` — мокать/декорировать |
+| `DomainMonitorBuilder` | Fluent-сборка оркестратора с гранулярным контролем (`withHttp`, `withWhois`, `withoutPort`, …) |
+| `DomainMonitorOptions` | VO для оркестратора: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds |
+| `ReportThresholds` | VO: окно предупреждения об истечении SSL (`sslWarnDays`) + окно предупреждения WHOIS (`whoisWarnDays`); `default()` / `strict()` |
+| `HostNormalizer` | Нормализация хостов/URL-ов (lowercase, strip scheme/port/path, опционально IDN) |
+| `HttpProbeService` | PSR-18 GET/HEAD-проба с замером времени → `ProbeResult`; `probeWithResponse()` для переиспользования ответа |
+| `HttpProbeWithResponse` | DTO: `ProbeResult` + `ResponseInterface` (для переиспользования ответа) |
+| `HttpProbeOptions` | Конфигурация method, headers, timeout, user-agent для HTTP-проб |
+| `ProbeResult` | DTO: `status`, `totalTime` |
+| `SslCertificateService` | Чтение удалённого SSL-сертификата; опциональный org-фильтр → `SslCertificate` |
+| `SslCertificate` | DTO: `validFrom`, `validUntil`, `subjectCn`, `issuer` + хелперы истечения |
+| `WhoisService` | Загрузка и мэппинг данных vendor-а WHOIS → `TldInfo` |
+| `TldInfo` | DTO: `domain`, `?registrar`, `?expirationDate`, `states` |
+| `DnsService` | Обёртка над `dns_get_record()` → `DnsRecords` |
+| `DnsRecords` | DTO: `a`, `aaaa`, `mx`, `ns`, `txt`, `cname` |
+| `PortService` | TCP-доступность через `stream_socket_client()` → `PortCheck` |
+| `PortCheck` | DTO: `status`, `host`, `port`, `connectTime`, `?error` |
+| `SecurityHeadersService` | Проверка HSTS/CSP/XFO/XCTO на PSR-7-ответе → `SecurityHeadersCheck` |
+| `SecurityHeadersCheck` | DTO: флаги по каждому заголовку + списки present/missing |
+| `RobotsTxtService` | Загрузка `/robots.txt` + извлечение Sitemap-хинтов → `RobotsTxtCheck` |
+| `RobotsTxtCheck` | DTO: `exists`, `httpStatus`, `sitemaps[]` |
+| `SitemapService` | Загрузка sitemap + подсчёт `<url>`-записей → `SitemapCheck` |
+| `SitemapCheck` | DTO: `exists`, `httpStatus`, `urlCount` |
+| `HttpContentCheckService` | Проверка статус-кода + обязательных/запрещённых ключевых слов → `HttpContentCheck`; `checkFromResponse()` для переиспользования ответа |
+| `HttpContentCheck` | DTO: `status`, `httpStatus`, `?finalUrl`, текстовые флаги |
+| `DomainHealthReport` | Составной DTO для всех результатов проверок; `getStatus()` агрегат, `getChecks()`/`getCheck()` по каждой проверке, `getErrors()`/`hasErrors()`, `JsonSerializable` |
+| `CheckResult` | DTO: `check` (`CheckName`), `status` (`CheckStatus`), `reason` (человекочитаемый) |
+| `CheckError` | DTO: `check` (`CheckName`), `message` — проверка, которая запускалась, но упала |
+| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap` |
+| `CheckStatus` | Enum: `OK`, `WARNING`, `CRITICAL`, `UNKNOWN` |
+
 ## Безопасность
-– HTTP-проверки принимают только URL-адреса `http` и `https`.
- — входные данные хоста нормализуются и проверяются перед использованием.
- — `SslCertificateService` считывает одноранговые сертификаты в режиме мониторинга (`verify_peer: false`) — он не проверяет цепочку доверия PKI.
- - Пакет сам по себе не выполняет никаких сетевых запросов: он опирается на предоставляемых пользователем клиентов PSR-18 и экземпляры WHOIS. @@ЛИНИЯ@@
+
+- HTTP-проверки принимают только `http` и `https` URL-ы.
+- Входные хосты нормализуются и валидируются перед использованием.
+- `SslCertificateService` читает peer-сертификаты в режиме мониторинга
+  (`verify_peer: false`) — он не валидирует PKI-цепочку доверия.
+- Пакет сам по себе не делает никаких сетевых запросов: он опирается на
+  переданные пользователем PSR-18 клиенты и WHOIS-инстансы.
+
 ## Примеры
-См. [examples/](examples/) для работоспособных сценариев.
 
- | Скрипт | Шоу | Сеть? |
- |---|---|---|
- | `full-check.php` | Полная проверка домена через оркестратор DomainMonitor | Да |
- | `http-probe.php` | HTTP-зонд + проверка содержимого | Да |
- | `ssl-whois-dns.php` | SSL, WHOIS и DNS | Да |
- | `порт.php` | Проверка TCP-порта с пользовательским хостом/портом | Да |
- | `security-headers.php` | Проверка заголовков безопасности на активном URL-адресе | Да |
- | `robots.php` | Загрузите `/robots.txt` и извлеките карты сайта | Да |
- | `sitemap.php` | Получить карту сайта и подсчитать URL-адреса | Да |
- | `report.php` | Создайте «DomainHealthReport» из DTO | Нет |
+См. [examples/](examples/) — запускаемые скрипты.
 
- Запустите примеры:
+| Скрипт | Показывает | Нужна сеть? |
+|---|---|---|
+| `full-check.php` | Полная проверка домена через оркестратор `DomainMonitor` | Да |
+| `http-probe.php` | HTTP-проба + проверка контента | Да |
+| `ssl-whois-dns.php` | SSL, WHOIS и DNS | Да |
+| `port.php` | TCP-проверка порта с произвольным хостом/портом | Да |
+| `security-headers.php` | Проверка заголовков безопасности на живом URL | Да |
+| `robots.php` | Загрузка `/robots.txt` и извлечение sitemap-ов | Да |
+| `sitemap.php` | Загрузка sitemap и подсчёт URL-ов | Да |
+| `report.php` | Сборка `DomainHealthReport` из DTO | Нет |
+
+Запуск примеров:
 
 ```bash
 php examples/port.php example.com 443
 php examples/security-headers.php https://example.com
 ```
+
 ## Разработка
-На хосте нет PHP/Composer — запустите в Docker через образ `composer:2`:
+
+На хосте нет PHP/Composer — запускайте через Docker-образ `composer:2`:
 
 ```bash
 docker run --rm -v "$PWD":/app -w /app composer:2 composer install
 docker run --rm -v "$PWD":/app -w /app composer:2 composer build
 ```
-Или с помощью Make:
+
+Или через Make:
 
 ```bash
 make install
@@ -411,10 +507,14 @@ make build
 make cs-fix
 make test
 ```
-Интеграционные тесты (с пометкой `@coversNothing`) пропускаются, если не установлено `DOMAIN_MONITOR_NET=1`:
+
+Интеграционные тесты (помечены `@coversNothing`) пропускаются, если не установлена
+переменная `DOMAIN_MONITOR_NET=1`:
 
 ```bash
 DOMAIN_MONITOR_NET=1 make test
 ```
+
 ## Лицензия
-[BSD-3-пункт](LICENSE.md)
+
+[BSD-3-Clause](LICENSE.md)
