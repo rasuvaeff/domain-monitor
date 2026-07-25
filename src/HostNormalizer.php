@@ -11,7 +11,7 @@ use InvalidArgumentException;
  */
 final readonly class HostNormalizer
 {
-    private const string HOST_PATTERN = '/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i';
+    private const string HOST_PATTERN = '/^(?=.{1,253}\z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\z/i';
 
     public function normalizeHost(string $hostOrUrl): string
     {

@@ -69,6 +69,16 @@ final class HttpProbeOptionsTest
         }
     }
 
+    public function throwsOnMethodWithTrailingNewline(): void
+    {
+        try {
+            new HttpProbeOptions(method: "GET\n");
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Invalid HTTP method');
+        }
+    }
+
     public function throwsOnInvalidTimeout(): void
     {
         try {
