@@ -110,6 +110,16 @@ final class DomainMonitorOptionsTest
         }
     }
 
+    public function throwsOnHttpMethodWithTrailingNewline(): void
+    {
+        try {
+            new DomainMonitorOptions(httpMethod: "GET\n");
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Invalid HTTP method');
+        }
+    }
+
     #[DataProvider('invalidExpectedStatusProvider')]
     public function throwsOnInvalidExpectedStatus(int $status): void
     {

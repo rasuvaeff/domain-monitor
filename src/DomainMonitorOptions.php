@@ -11,7 +11,7 @@ use InvalidArgumentException;
  */
 final readonly class DomainMonitorOptions
 {
-    private const string METHOD_PATTERN = '/^[A-Z]+$/';
+    private const string METHOD_PATTERN = '/^[A-Z]+\z/';
     private const string DEFAULT_USER_AGENT = 'rasuvaeff/domain-monitor';
 
     public string $httpMethod;

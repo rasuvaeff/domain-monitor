@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.1 — 2026-07-25
+
+- Reject trailing newlines in HTTP-method validation: anchor `METHOD_PATTERN`
+  in `HttpProbeOptions` and `DomainMonitorOptions` with `\z` instead of `$`
+  (PCRE `$` matches before a trailing `\n`, which let `"GET\n"` pass and reach
+  the PSR-18 request factory).
+- Hygiene: `HostNormalizer::HOST_PATTERN` also anchored with `\z` (both the
+  lookahead length bound and the subject end). `normalizeHost()` already
+  `trim()`s the host before the regex, so the change is not observable through
+  the public API.
+
 ## 1.3.0 — 2026-07-18
 
 - `ReportComparator` diffs two `DomainHealthReport` snapshots of the same host into a `list<StatusTransition>` (or a `ReportDiff` wrapper via `compare()`), turning stateless snapshots into alertable status changes without adding storage to the package.
