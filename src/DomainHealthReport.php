@@ -25,6 +25,7 @@ final readonly class DomainHealthReport implements JsonSerializable
         public ?SecurityHeadersCheck $securityHeaders = null,
         public ?RobotsTxtCheck $robotsTxt = null,
         public ?SitemapCheck $sitemap = null,
+        public ?EmailSecurityCheck $emailSecurity = null,
         public ?ReportThresholds $thresholds = null,
         public array $errors = [],
     ) {}
@@ -71,6 +72,10 @@ final readonly class DomainHealthReport implements JsonSerializable
 
         if ($this->sitemap !== null) {
             $results[] = $this->sitemapCheck(sitemap: $this->sitemap);
+        }
+
+        if ($this->emailSecurity !== null) {
+            $results[] = $this->emailSecurityCheck(check: $this->emailSecurity);
         }
 
         foreach ($this->errors as $error) {
@@ -141,6 +146,7 @@ final readonly class DomainHealthReport implements JsonSerializable
             'securityHeaders' => $this->securityHeaders,
             'robotsTxt' => $this->robotsTxt,
             'sitemap' => $this->sitemap,
+            'emailSecurity' => $this->emailSecurity,
         ];
     }
 
@@ -354,5 +360,34 @@ final readonly class DomainHealthReport implements JsonSerializable
             status: $sitemap->status,
             reason: \sprintf('Sitemap found (%d URL(s))', $sitemap->urlCount),
         );
+    }
+
+    private function emailSecurityCheck(EmailSecurityCheck $check): CheckResult
+    {
+        $parts = [];
+
+        if ($check->hasSpf) {
+            $parts[] = 'SPF';
+        }
+
+        if ($check->hasDmarc) {
+            $parts[] = $check->dmarcPolicy !== null
+                ? \sprintf('DMARC(%s)', $check->dmarcPolicy)
+                : 'DMARC';
+        }
+
+        if ($check->hasDkim) {
+            $parts[] = \sprintf('DKIM(%s)', \implode(separator: ',', array: $check->dkimSelectorsFound));
+        }
+
+        if ($check->hasCaa) {
+            $parts[] = \sprintf('CAA(%d)', \count($check->caaRecords));
+        }
+
+        $reason = $parts === []
+            ? ($check->mxRecords === [] ? 'No mail infrastructure; SPF/DMARC not expected' : 'Mail accepted but SPF/DMARC missing')
+            : \sprintf('%d MX; policies: %s', \count($check->mxRecords), \implode(separator: ', ', array: $parts));
+
+        return new CheckResult(check: CheckName::EmailSecurity, status: $check->status, reason: $reason);
     }
 }

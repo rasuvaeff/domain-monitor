@@ -11,6 +11,7 @@ composer require rasuvaeff/domain-monitor
 - HTTP services require a PSR-18 client and a PSR-17 request factory.
 - Host-only inputs go to host services; HTTP services require `http://` or `https://` URLs.
 - `SslCertificateService` reads peer certificates best-effort and does not verify trust.
+- `EmailSecurityService` uses `dns_get_record` for SPF / DMARC / DKIM (selectors opt-in via constructor) / CAA / MX. No HTTP client needed.
 - `DomainMonitor` orchestrator runs all configured services in one call, reuses the HTTP response for probe + security headers + content check. Services are optional: `null` = check disabled.
 - `DomainMonitor::create($client, $factory, $whois?)` wires every check with defaults; `DomainMonitorBuilder` composes granularly. `DomainMonitor implements DomainMonitorInterface`.
 - `DomainMonitor` catches exceptions per check; a failed check becomes a `CheckError` (see `getErrors()`/`hasErrors()`), reported as `UNKNOWN`, not silently dropped. Disabled check = `null`.
@@ -152,6 +153,21 @@ $port = $portService->check(host: 'example.com', port: 443);
 $headers = $headersService->check(response: $response);
 $robots = $robotsService->check(baseUrl: 'https://example.com');
 $sitemap = $sitemapService->check(sitemapUrl: 'https://example.com/sitemap.xml');
+```
+
+### Check email security (SPF / DKIM / DMARC / CAA / MX)
+
+```php
+use Rasuvaeff\DomainMonitor\EmailSecurityService;
+
+$email = (new EmailSecurityService(dkimSelectors: ['google', 'default']))
+    ->check(host: 'example.com');
+// EmailSecurityCheck { status, hasSpf, spfRecord, hasDmarc, dmarcPolicy,
+//                      hasDkim, dkimSelectorsFound, hasCaa, caaRecords, mxRecords }
+// status worst-wins: OK (SPF+DMARC, or no MX + no policies),
+//                    WARNING (MX present, SPF or DMARC missing),
+//                    CRITICAL (MX present, both SPF+DMARC missing),
+//                    UNKNOWN (DNS lookup failed).
 ```
 
 ### Build a report

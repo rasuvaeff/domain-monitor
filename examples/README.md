@@ -9,6 +9,7 @@
 | `security-headers.php` | Security headers (HSTS, CSP, etc.) analysis | Yes |
 | `robots.php` | `/robots.txt` availability + sitemap extraction | Yes |
 | `sitemap.php` | Sitemap availability + URL count | Yes |
+| `email-security.php` | Email security (SPF / DMARC / DKIM / CAA / MX) via DNS | Yes |
 | `report.php` | Building a `DomainHealthReport` from DTOs | No |
 | `report-diff.php` | Diffing two reports into per-check status transitions | No |
 

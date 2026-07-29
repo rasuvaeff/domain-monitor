@@ -30,6 +30,7 @@ final class DomainMonitorBuilder
     private bool $robotsTxt = true;
     private bool $sitemap = true;
     private bool $content = true;
+    private bool $emailSecurity = true;
 
     private function __construct()
     {
@@ -119,6 +120,13 @@ final class DomainMonitorBuilder
         return $this;
     }
 
+    public function withoutEmailSecurity(): self
+    {
+        $this->emailSecurity = false;
+
+        return $this;
+    }
+
     public function build(): DomainMonitor
     {
         $hasHttp = $this->httpClient !== null && $this->requestFactory !== null;
@@ -144,6 +152,7 @@ final class DomainMonitorBuilder
             content: $this->content && $hasHttp
                 ? new HttpContentCheckService(httpClient: $this->httpClient, requestFactory: $this->requestFactory)
                 : null,
+            emailSecurity: $this->emailSecurity ? new EmailSecurityService() : null,
         );
     }
 }

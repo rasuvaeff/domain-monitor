@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- New `EmailSecurityService` + `EmailSecurityCheck` inspect a host's email-security
+  DNS posture: SPF (TXT at root), DMARC (TXT at `_dmarc.{host}`, with `p=`
+  policy extraction), DKIM (TXT at `{selector}._domainkey.{host}` for selectors
+  supplied to the constructor — pass `null`/omit to skip DKIM), CAA (`issue` tag)
+  and MX. Status follows worst-wins:
+  - `OK` — SPF + DMARC published, or no MX and no SPF/DMARC (host not configured for inbound email).
+  - `WARNING` — mail accepted (MX present) but SPF or DMARC missing; or no MX with only one of SPF/DMARC.
+  - `CRITICAL` — mail accepted but neither SPF nor DMARC published.
+  - `UNKNOWN` — DNS lookup failed.
+  The service is pure-DNS (no HTTP client required) and accepts a `callable`
+  resolver for tests, mirroring `DnsService`.
+- New `CheckName::EmailSecurity = 'email-security'` case.
+- `DomainMonitor` constructor gains `?EmailSecurityService $emailSecurity = null`
+  (additive, default-disabled); `DomainMonitor::create()` factory wires it by
+  default; `DomainMonitorBuilder::withoutEmailSecurity()` disables it.
+- `DomainHealthReport` carries `?EmailSecurityCheck $emailSecurity = null` and
+  exposes it via `getChecks()` / `getCheck(CheckName::EmailSecurity)`.
+- New runnable example `examples/email-security.php`.
+- README (EN + RU) and `llms.txt` document the new check, status rules and API
+  reference entries.
+
 ## 1.3.2 — 2026-07-29
 
 - Fix PSR-7 named-argument incompatibility: HTTP-based services

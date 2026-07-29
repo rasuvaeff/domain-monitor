@@ -11,7 +11,7 @@
 
 A modular domain monitoring toolkit for PHP 8.3+. Zero-framework, PSR-compatible, with small immutable DTOs and focused stateless services. Each checker does one thing — you compose them as needed.
 
-**Checks:** HTTP probing · SSL certificates · WHOIS · DNS · TCP ports · security headers · `robots.txt` · sitemaps.
+**Checks:** HTTP probing · SSL certificates · WHOIS · DNS · TCP ports · security headers · `robots.txt` · sitemaps · email security (SPF / DKIM / DMARC / CAA / MX).
 
 **Does not include:** scheduling, persistence, caching, or async runners. The package provides building blocks and a `DomainMonitor` orchestrator; your application provides the workflow.
 
@@ -372,6 +372,26 @@ $content = (new HttpContentCheckService(httpClient: $client, requestFactory: $re
 // HttpContentCheck { status: OK, requiredTextFound: true, forbiddenTextFound: false }
 ```
 
+### Email security
+
+```php
+use Rasuvaeff\DomainMonitor\EmailSecurityService;
+
+// DKIM is selector-dependent; pass selectors to probe, or omit to skip DKIM.
+$email = (new EmailSecurityService(dkimSelectors: ['google', 'default']))
+    ->check(host: 'example.com');
+// EmailSecurityCheck { status: OK, hasSpf: true, spfRecord: 'v=spf1 -all',
+//                      hasDmarc: true, dmarcPolicy: 'reject', hasDkim: true,
+//                      dkimSelectorsFound: ['google'], hasCaa: true,
+//                      caaRecords: ['letsencrypt.org'], mxRecords: ['mx1.example.com'] }
+```
+
+Status follows worst-wins:
+- `OK` — SPF + DMARC published, or no MX and no SPF/DMARC (host is not configured for inbound email).
+- `WARNING` — mail accepted (MX present) but SPF or DMARC missing; or no MX but only one of SPF/DMARC.
+- `CRITICAL` — mail accepted but neither SPF nor DMARC published.
+- `UNKNOWN` — DNS lookup failed.
+
 ### Build a report
 
 ```php
@@ -419,10 +439,12 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `SitemapCheck` | DTO: `exists`, `httpStatus`, `urlCount` |
 | `HttpContentCheckService` | Status code + required/forbidden keyword check → `HttpContentCheck`; `checkFromResponse()` for response reuse |
 | `HttpContentCheck` | DTO: `status`, `httpStatus`, `?finalUrl`, text flags |
+| `EmailSecurityService` | Inspect SPF / DMARC / DKIM (selectors opt-in) / CAA / MX via `dns_get_record` → `EmailSecurityCheck` |
+| `EmailSecurityCheck` | DTO: per-record flags + `mxRecords`, `caaRecords`, `dkimSelectorsFound`, worst-wins `status` |
 | `DomainHealthReport` | Composite DTO for all check results; `getStatus()` aggregate, `getChecks()`/`getCheck()` per-check, `getErrors()`/`hasErrors()`, `JsonSerializable` |
 | `CheckResult` | DTO: `check` (`CheckName`), `status` (`CheckStatus`), `reason` (human-readable) |
 | `CheckError` | DTO: `check` (`CheckName`), `message` — a check that ran but threw |
-| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap` |
+| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap`, `EmailSecurity` |
 | `CheckStatus` | Enum: `OK`, `WARNING`, `CRITICAL`, `UNKNOWN` |
 
 ## Security
@@ -445,7 +467,9 @@ See [examples/](examples/) for runnable scripts.
 | `security-headers.php` | Check security headers on a live URL | Yes |
 | `robots.php` | Fetch `/robots.txt` and extract sitemaps | Yes |
 | `sitemap.php` | Fetch sitemap and count URLs | Yes |
+| `email-security.php` | Inspect SPF / DMARC / DKIM / CAA / MX via DNS | Yes |
 | `report.php` | Build a `DomainHealthReport` from DTOs | No |
+| `report-diff.php` | Diff two reports into per-check status transitions | No |
 
 Run examples:
 

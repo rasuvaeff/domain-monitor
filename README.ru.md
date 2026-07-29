@@ -15,7 +15,7 @@ stateless-сервисами. Каждый чекер делает одну ве
 необходимости.
 
 **Проверки:** HTTP-пробы · SSL-сертификаты · WHOIS · DNS · TCP-порты ·
-заголовки безопасности · `robots.txt` · sitemap-ы.
+заголовки безопасности · `robots.txt` · sitemap-ы · email-безопасность (SPF / DKIM / DMARC / CAA / MX).
 
 **Не входит:** планирование, персистентность, кэширование или асинхронные
 раннеры. Пакет предоставляет строительные блоки и оркестратор `DomainMonitor`;
@@ -406,6 +406,26 @@ $content = (new HttpContentCheckService(httpClient: $client, requestFactory: $re
 // HttpContentCheck { status: OK, requiredTextFound: true, forbiddenTextFound: false }
 ```
 
+### Email-безопасность
+
+```php
+use Rasuvaeff\DomainMonitor\EmailSecurityService;
+
+// DKIM зависит от selector'а: передайте список selector'ов для проверки или опустите, чтобы пропустить DKIM.
+$email = (new EmailSecurityService(dkimSelectors: ['google', 'default']))
+    ->check(host: 'example.com');
+// EmailSecurityCheck { status: OK, hasSpf: true, spfRecord: 'v=spf1 -all',
+//                      hasDmarc: true, dmarcPolicy: 'reject', hasDkim: true,
+//                      dkimSelectorsFound: ['google'], hasCaa: true,
+//                      caaRecords: ['letsencrypt.org'], mxRecords: ['mx1.example.com'] }
+```
+
+Статус следует принципу worst-wins:
+- `OK` — SPF + DMARC опубликованы; либо нет MX и нет SPF/DMARC (домен не настроен для приёма почты).
+- `WARNING` — почта принимается (есть MX), но отсутствует SPF или DMARC; либо нет MX, но опубликован только один из SPF/DMARC.
+- `CRITICAL` — почта принимается, но не опубликованы ни SPF, ни DMARC.
+- `UNKNOWN` — DNS-запрос завершился ошибкой.
+
 ### Сборка отчёта
 
 ```php
@@ -453,10 +473,12 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `SitemapCheck` | DTO: `exists`, `httpStatus`, `urlCount` |
 | `HttpContentCheckService` | Проверка статус-кода + обязательных/запрещённых ключевых слов → `HttpContentCheck`; `checkFromResponse()` для переиспользования ответа |
 | `HttpContentCheck` | DTO: `status`, `httpStatus`, `?finalUrl`, текстовые флаги |
+| `EmailSecurityService` | Проверка SPF / DMARC / DKIM (selector'ы опциональны) / CAA / MX через `dns_get_record` → `EmailSecurityCheck` |
+| `EmailSecurityCheck` | DTO: флаги по каждой записи + `mxRecords`, `caaRecords`, `dkimSelectorsFound`, worst-wins `status` |
 | `DomainHealthReport` | Составной DTO для всех результатов проверок; `getStatus()` агрегат, `getChecks()`/`getCheck()` по каждой проверке, `getErrors()`/`hasErrors()`, `JsonSerializable` |
 | `CheckResult` | DTO: `check` (`CheckName`), `status` (`CheckStatus`), `reason` (человекочитаемый) |
 | `CheckError` | DTO: `check` (`CheckName`), `message` — проверка, которая запускалась, но упала |
-| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap` |
+| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap`, `EmailSecurity` |
 | `CheckStatus` | Enum: `OK`, `WARNING`, `CRITICAL`, `UNKNOWN` |
 
 ## Безопасность
@@ -481,7 +503,9 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `security-headers.php` | Проверка заголовков безопасности на живом URL | Да |
 | `robots.php` | Загрузка `/robots.txt` и извлечение sitemap-ов | Да |
 | `sitemap.php` | Загрузка sitemap и подсчёт URL-ов | Да |
+| `email-security.php` | Проверка SPF / DMARC / DKIM / CAA / MX через DNS | Да |
 | `report.php` | Сборка `DomainHealthReport` из DTO | Нет |
+| `report-diff.php` | Diff двух отчётов в per-check переходы статусов | Нет |
 
 Запуск примеров:
 

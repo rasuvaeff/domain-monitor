@@ -30,6 +30,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         public ?RobotsTxtService $robotsTxt = null,
         public ?SitemapService $sitemap = null,
         public ?HttpContentCheckService $content = null,
+        public ?EmailSecurityService $emailSecurity = null,
     ) {
         if ($securityHeaders !== null && $httpProbe === null) {
             throw new \InvalidArgumentException(
@@ -58,6 +59,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             robotsTxt: new RobotsTxtService(httpClient: $httpClient, requestFactory: $requestFactory),
             sitemap: new SitemapService(httpClient: $httpClient, requestFactory: $requestFactory),
             content: new HttpContentCheckService(httpClient: $httpClient, requestFactory: $requestFactory),
+            emailSecurity: new EmailSecurityService(),
         );
     }
 
@@ -214,6 +216,18 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             );
         }
 
+        $emailSecurity = null;
+        $emailSecurityService = $this->emailSecurity;
+
+        if ($emailSecurityService !== null) {
+            $emailSecurity = $this->runCheck(
+                name: CheckName::EmailSecurity,
+                host: $normalizedHost,
+                callback: fn() => $emailSecurityService->check(host: $normalizedHost),
+                errors: $errors,
+            );
+        }
+
         return new DomainHealthReport(
             host: $normalizedHost,
             probe: $probe,
@@ -225,6 +239,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             securityHeaders: $securityHeaders,
             robotsTxt: $robotsTxt,
             sitemap: $sitemap,
+            emailSecurity: $emailSecurity,
             thresholds: $options->thresholds,
             errors: $errors,
         );
