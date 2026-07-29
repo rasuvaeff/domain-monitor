@@ -131,6 +131,58 @@ final class CookieSecurityServiceTest
         Assert::string($check->reason)->contains('1 of 1 cookie(s) insecure: a');
     }
 
+    public function reportsNoCookiesReasonWhenHeadersEmpty(): void
+    {
+        $response = $this->response([]);
+
+        $check = (new CookieSecurityService())->check(response: $response);
+
+        Assert::string($check->reason)->contains('No Set-Cookie headers');
+    }
+
+    public function skipsInvalidHeadersButKeepsValidOnesInSameResponse(): void
+    {
+        $response = $this->response([
+            '   ',
+            'session=abc; Secure; HttpOnly',
+            '',
+        ]);
+
+        $check = (new CookieSecurityService())->check(response: $response);
+
+        Assert::same($check->status, CheckStatus::OK);
+        Assert::same(\count($check->cookies), 1);
+        Assert::same($check->cookies[0]['name'], 'session');
+    }
+
+    public function parsesNameFromFirstPart(): void
+    {
+        $response = $this->response(['session=abc; Secure; HttpOnly']);
+
+        $check = (new CookieSecurityService())->check(response: $response);
+
+        Assert::same($check->cookies[0]['name'], 'session');
+    }
+
+    public function parsesSameSiteValueWithWhitespaceAroundEquals(): void
+    {
+        $response = $this->response(['session=abc; Secure; HttpOnly; SameSite = Strict']);
+
+        $check = (new CookieSecurityService())->check(response: $response);
+
+        Assert::same($check->cookies[0]['sameSite'], 'Strict');
+    }
+
+    public function parsesPathAndDomainAttributes(): void
+    {
+        $response = $this->response(['session=abc; Secure; HttpOnly; Path=/app; Domain=example.com']);
+
+        $check = (new CookieSecurityService())->check(response: $response);
+
+        Assert::same($check->cookies[0]['path'], '/app');
+        Assert::same($check->cookies[0]['domain'], 'example.com');
+    }
+
     /**
      * @param list<string> $setCookie
      */

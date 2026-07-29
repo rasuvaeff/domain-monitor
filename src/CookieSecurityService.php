@@ -81,7 +81,7 @@ final readonly class CookieSecurityService
         }
 
         $nameValue = \explode(separator: '=', string: $firstPart, limit: 2);
-        $name = \trim(string: $nameValue[0] ?? '');
+        $name = $nameValue[0] ?? '';
 
         if ($name === '') {
             return null;
