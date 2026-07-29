@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.2 — 2026-07-29
 
 - Fix PSR-7 named-argument incompatibility: HTTP-based services
   (`HttpProbeService`, `RobotsTxtService`, `SitemapService`,
