@@ -24,7 +24,7 @@ final readonly class SecurityHeadersService
         $missingHeaders = [];
 
         foreach (self::REQUIRED_HEADERS as $header) {
-            if ($response->hasHeader(name: $header)) {
+            if ($response->hasHeader($header)) {
                 $presentHeaders[] = $header;
             } else {
                 $missingHeaders[] = $header;
@@ -33,10 +33,10 @@ final readonly class SecurityHeadersService
 
         return new SecurityHeadersCheck(
             status: $missingHeaders === [] ? CheckStatus::OK : CheckStatus::WARNING,
-            hasHsts: $response->hasHeader(name: 'Strict-Transport-Security'),
-            hasContentSecurityPolicy: $response->hasHeader(name: 'Content-Security-Policy'),
-            hasXFrameOptions: $response->hasHeader(name: 'X-Frame-Options'),
-            hasXContentTypeOptions: $response->hasHeader(name: 'X-Content-Type-Options'),
+            hasHsts: $response->hasHeader('Strict-Transport-Security'),
+            hasContentSecurityPolicy: $response->hasHeader('Content-Security-Policy'),
+            hasXFrameOptions: $response->hasHeader('X-Frame-Options'),
+            hasXContentTypeOptions: $response->hasHeader('X-Content-Type-Options'),
             presentHeaders: $presentHeaders,
             missingHeaders: $missingHeaders,
         );

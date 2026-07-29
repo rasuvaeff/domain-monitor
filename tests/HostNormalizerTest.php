@@ -160,7 +160,7 @@ final class HostNormalizerTest
     }
 
     /** @return array<string, ArbitraryInterface> */
-    private function normalizeHostIsIdempotentGenerators(): array
+    public static function normalizeHostIsIdempotentGenerators(): array
     {
         return ['host' => self::hostGenerator()];
     }
@@ -174,7 +174,7 @@ final class HostNormalizerTest
     }
 
     /** @return array<string, ArbitraryInterface> */
-    private function normalizeHostIgnoresSchemePortPathAndCaseGenerators(): array
+    public static function normalizeHostIgnoresSchemePortPathAndCaseGenerators(): array
     {
         return ['host' => self::hostGenerator()];
     }
@@ -190,9 +190,36 @@ final class HostNormalizerTest
     }
 
     /** @return array<string, ArbitraryInterface> */
-    private function normalizeUrlIsIdempotentGenerators(): array
+    public static function normalizeUrlIsIdempotentGenerators(): array
     {
         return ['host' => self::hostGenerator()];
+    }
+
+    #[Property(runs: 100)]
+    public function normalizeHostRoundtripsIdn(string $asciiHost): void
+    {
+        if (!\function_exists('idn_to_utf8')) {
+            return;
+        }
+
+        $normalizedAscii = $this->normalizer->normalizeHost(hostOrUrl: $asciiHost);
+        $utf8 = \idn_to_utf8(domain: $asciiHost);
+
+        Assert::true(\is_string(value: $utf8));
+        Assert::same($this->normalizer->normalizeHost(hostOrUrl: $utf8), $normalizedAscii);
+    }
+
+    /** @return array<string, ArbitraryInterface> */
+    public static function normalizeHostRoundtripsIdnGenerators(): array
+    {
+        return [
+            'asciiHost' => Gen::oneOf(
+                'xn--e1aybc.xn--p1ai',
+                'xn--80akhbyknj4f.com',
+                'xn--mnchen-3ya.de',
+                'xn--bcher-kva.de',
+            ),
+        ];
     }
 
     /**

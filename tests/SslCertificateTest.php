@@ -7,6 +7,9 @@ namespace Rasuvaeff\DomainMonitor\Tests;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use Rasuvaeff\DomainMonitor\SslCertificate;
+use Rasuvaeff\PropertyTesting\ArbitraryInterface;
+use Rasuvaeff\PropertyTesting\Gen;
+use Rasuvaeff\PropertyTesting\Property;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
@@ -116,6 +119,71 @@ final class SslCertificateTest
         Assert::false($future->isExpired());
         Assert::true($past->isExpired());
         Assert::true($future->daysUntilExpiry() > 0);
+    }
+
+    #[Property(runs: 200)]
+    public function isExpiredIsMonotonicByNow(int $validUntilDays, array $nowSpan): void
+    {
+        [$now1Days, $now2Days] = $nowSpan;
+
+        $epoch = new DateTimeImmutable(datetime: '2020-01-01T00:00:00+00:00');
+        $certificate = new SslCertificate(
+            validFrom: $epoch,
+            validUntil: $epoch->modify(modifier: "+{$validUntilDays} days"),
+            subjectCn: 'example.com',
+        );
+        $now1 = $epoch->modify(modifier: "+{$now1Days} days");
+        $now2 = $epoch->modify(modifier: "+{$now2Days} days");
+
+        if ($certificate->isExpired(now: $now1)) {
+            Assert::true($certificate->isExpired(now: $now2));
+        }
+    }
+
+    /**
+     * @return array<string, ArbitraryInterface>
+     */
+    public static function isExpiredIsMonotonicByNowGenerators(): array
+    {
+        return [
+            'validUntilDays' => Gen::intBetween(0, 365),
+            'nowSpan' => Gen::intRange(min: 0, max: 365),
+        ];
+    }
+
+    #[Property(runs: 200)]
+    public function daysUntilExpiryStaysWithinCertificateLifetime(array $case): void
+    {
+        [$lifetime, $offset] = $case;
+
+        $epoch = new DateTimeImmutable(datetime: '2020-01-01T00:00:00+00:00');
+        $certificate = new SslCertificate(
+            validFrom: $epoch,
+            validUntil: $epoch->modify(modifier: "+{$lifetime} days"),
+            subjectCn: 'example.com',
+        );
+        $now = $epoch->modify(modifier: "+{$offset} days");
+
+        $days = $certificate->daysUntilExpiry(now: $now);
+
+        Assert::true($days >= 0);
+        Assert::true($days <= $lifetime);
+    }
+
+    /**
+     * @return array<string, ArbitraryInterface>
+     */
+    public static function daysUntilExpiryStaysWithinCertificateLifetimeGenerators(): array
+    {
+        return [
+            'case' => Gen::flatMap(
+                Gen::intBetween(min: 1, max: 365),
+                static fn(int $lifetime): ArbitraryInterface => Gen::tuple(
+                    Gen::constant(value: $lifetime),
+                    Gen::intBetween(min: 0, max: $lifetime),
+                ),
+            ),
+        ];
     }
 
     private function certificate(string $validUntil): SslCertificate
