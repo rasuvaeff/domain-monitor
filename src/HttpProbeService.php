@@ -80,11 +80,11 @@ final readonly class HttpProbeService
         );
 
         foreach ($options->headers as $name => $value) {
-            $request = $request->withHeader(name: $name, value: $value);
+            $request = $request->withHeader($name, $value);
         }
 
-        if (!$request->hasHeader(name: 'User-Agent')) {
-            $request = $request->withHeader(name: 'User-Agent', value: $options->userAgent);
+        if (!$request->hasHeader('User-Agent')) {
+            $request = $request->withHeader('User-Agent', $options->userAgent);
         }
 
         return $request;

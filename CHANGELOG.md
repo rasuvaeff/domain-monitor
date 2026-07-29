@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.3.2 — 2026-07-29
+
+- Fix PSR-7 named-argument incompatibility: HTTP-based services
+  (`HttpProbeService`, `RobotsTxtService`, `SitemapService`,
+  `HttpContentCheckService`, `SecurityHeadersService`) called
+  `MessageInterface::withHeader(name:, value:)` / `hasHeader(name:)` using the
+  parameter names declared on the PSR-7 interface, but real implementations
+  (`nyholm/psr7`, `guzzle/psr7`, `laminas/laminas-diactoros`) name the parameter
+  `$header` and throw `Unknown named parameter $name` at runtime. Switched to
+  positional arguments. The bug was masked because unit tests exercise these
+  services through fakes whose signatures happened to match.
+- Add `symfony/http-client` to `require-dev` so the HTTP-based examples
+  (`full-check`, `http-probe`, `robots`, `security-headers`, `sitemap`) are
+  runnable from a fresh `composer install`. Previously they referenced
+  `Symfony\Component\HttpClient\Psr18Client` without the dependency installed.
+- Bump `rasuvaeff/property-testing` from `^1.0` to `^2.7` and convert
+  `*Generators` helpers to `public static` (Rector's dead-code set deletes
+  private ones called only via reflection).
+- New property-based tests: arbitrary-report comparator invariants
+  (`diffOfArbitraryReportWithItselfIsEmpty`,
+  `forwardAndBackwardTransitionsAreInverse`, `worstTransitionCarriesMaxSeverity`),
+  SSL time-monotonicity (`isExpiredIsMonotonicByNow`,
+  `daysUntilExpiryStaysWithinCertificateLifetime`),
+  `CheckStatus` severity collision, and IDN round-trip.
+
 ## 1.3.1 — 2026-07-25
 
 - Reject trailing newlines in HTTP-method validation: anchor `METHOD_PATTERN`

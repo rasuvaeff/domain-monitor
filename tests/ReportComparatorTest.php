@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use Rasuvaeff\DomainMonitor\CheckError;
 use Rasuvaeff\DomainMonitor\CheckName;
 use Rasuvaeff\DomainMonitor\CheckStatus;
+use Rasuvaeff\DomainMonitor\DnsRecords;
 use Rasuvaeff\DomainMonitor\DomainHealthReport;
 use Rasuvaeff\DomainMonitor\ProbeResult;
 use Rasuvaeff\DomainMonitor\ReportComparator;
@@ -245,6 +246,98 @@ final class ReportComparatorTest
         ];
     }
 
+    #[Property(runs: 200)]
+    public function diffOfArbitraryReportWithItselfIsEmpty(DomainHealthReport $report): void
+    {
+        Assert::same($this->comparator->diff(previous: $report, current: $report), []);
+    }
+
+    /**
+     * @return array<string, ArbitraryInterface>
+     */
+    public static function diffOfArbitraryReportWithItselfIsEmptyGenerators(): array
+    {
+        return ['report' => self::reportGenerator()];
+    }
+
+    #[Property(runs: 200)]
+    public function forwardAndBackwardTransitionsAreInverse(DomainHealthReport $previous, DomainHealthReport $current): void
+    {
+        $forward = $this->comparator->diff(previous: $previous, current: $current);
+        $backward = $this->comparator->diff(previous: $current, current: $previous);
+
+        Assert::same(\count($forward), \count($backward));
+
+        $byCheck = static function (array $transitions): array {
+            $map = [];
+
+            foreach ($transitions as $transition) {
+                $map[$transition->check->value] = $transition;
+            }
+
+            return $map;
+        };
+
+        $fwd = $byCheck($forward);
+        $bwd = $byCheck($backward);
+
+        Assert::same(\array_keys($fwd), \array_keys($bwd));
+
+        foreach ($fwd as $check => $fTransition) {
+            Assert::same($fTransition->from, $bwd[$check]->to);
+            Assert::same($fTransition->to, $bwd[$check]->from);
+        }
+    }
+
+    /**
+     * @return array<string, ArbitraryInterface>
+     */
+    public static function forwardAndBackwardTransitionsAreInverseGenerators(): array
+    {
+        return [
+            'previous' => self::reportGenerator(),
+            'current' => self::reportGenerator(),
+        ];
+    }
+
+    #[Property(runs: 200)]
+    public function worstTransitionCarriesMaxSeverity(DomainHealthReport $previous, DomainHealthReport $current): void
+    {
+        $diff = $this->comparator->compare(previous: $previous, current: $current);
+
+        if (!$diff->hasChanges()) {
+            Assert::null($diff->worstTransition());
+
+            return;
+        }
+
+        $worst = $diff->worstTransition();
+        Assert::notNull($worst);
+
+        $maxRank = -1;
+
+        foreach ($diff->getTransitions() as $transition) {
+            $rank = $transition->to?->severity() ?? -1;
+
+            if ($rank > $maxRank) {
+                $maxRank = $rank;
+            }
+        }
+
+        Assert::same($worst->to?->severity() ?? -1, $maxRank);
+    }
+
+    /**
+     * @return array<string, ArbitraryInterface>
+     */
+    public static function worstTransitionCarriesMaxSeverityGenerators(): array
+    {
+        return [
+            'previous' => self::reportGenerator(),
+            'current' => self::reportGenerator(),
+        ];
+    }
+
     private function singleTransition(int $previousStatus, int $currentStatus): StatusTransition
     {
         $transitions = $this->comparator->diff(
@@ -273,5 +366,41 @@ final class ReportComparatorTest
     private function whoisUnknown(): TldInfo
     {
         return new TldInfo(domain: 'example.com');
+    }
+
+    /**
+     * Builds a DomainHealthReport from a random subset of checks (probe / whois
+     * / dns), each independently drawn from representative statuses spanning
+     * OK / WARNING / CRITICAL / UNKNOWN / absent. Exercises the comparator over
+     * the full reachable state space without coupling to any single check.
+     */
+    private static function reportGenerator(): ArbitraryInterface
+    {
+        $probe = Gen::nullable(Gen::oneOf(
+            new ProbeResult(status: 200, totalTime: 0.1),
+            new ProbeResult(status: 404, totalTime: 0.1),
+            new ProbeResult(status: 500, totalTime: 0.1),
+            new ProbeResult(status: 0, totalTime: 0.1),
+        ));
+        $whois = Gen::nullable(Gen::oneOf(
+            new TldInfo(domain: 'example.com', expirationDate: new DateTimeImmutable(datetime: '+100 days')),
+            new TldInfo(domain: 'example.com', expirationDate: new DateTimeImmutable(datetime: '+10 days')),
+            new TldInfo(domain: 'example.com', expirationDate: new DateTimeImmutable(datetime: '-1 day')),
+            new TldInfo(domain: 'example.com'),
+        ));
+        $dns = Gen::nullable(Gen::oneOf(
+            new DnsRecords(a: ['192.0.2.1']),
+            new DnsRecords(),
+        ));
+
+        return Gen::map(
+            Gen::tuple($probe, $whois, $dns),
+            static fn(array $parts): DomainHealthReport => new DomainHealthReport(
+                host: 'example.com',
+                probe: $parts[0],
+                whois: $parts[1],
+                dns: $parts[2],
+            ),
+        );
     }
 }

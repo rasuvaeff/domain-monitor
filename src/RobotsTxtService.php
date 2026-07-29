@@ -32,11 +32,11 @@ final readonly class RobotsTxtService
         );
 
         foreach ($probeOptions->headers as $name => $value) {
-            $request = $request->withHeader(name: $name, value: $value);
+            $request = $request->withHeader($name, $value);
         }
 
-        if (!$request->hasHeader(name: 'User-Agent')) {
-            $request = $request->withHeader(name: 'User-Agent', value: $probeOptions->userAgent);
+        if (!$request->hasHeader('User-Agent')) {
+            $request = $request->withHeader('User-Agent', $probeOptions->userAgent);
         }
 
         try {
