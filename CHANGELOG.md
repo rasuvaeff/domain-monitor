@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.4.0 — 2026-07-29
+
+### EmailSecurityService (SPF / DKIM / DMARC / CAA / MX)
+
+- New `EmailSecurityService` + `EmailSecurityCheck` inspect a host's email-security
+  DNS posture: SPF (TXT at root), DMARC (TXT at `_dmarc.{host}`, with `p=`
+  policy extraction), DKIM (TXT at `{selector}._domainkey.{host}` for selectors
+  supplied to the constructor — pass `null`/omit to skip DKIM), CAA (`issue` tag)
+  and MX. Status follows worst-wins:
+  - `OK` — SPF + DMARC published, or no MX and no SPF/DMARC (host not configured for inbound email).
+  - `WARNING` — mail accepted (MX present) but SPF or DMARC missing; or no MX with only one of SPF/DMARC.
+  - `CRITICAL` — mail accepted but neither SPF nor DMARC published.
+  - `UNKNOWN` — DNS lookup failed.
+  The service is pure-DNS (no HTTP client required) and accepts a `callable`
+  resolver for tests, mirroring `DnsService`.
+
+### TlsCipherService (protocol version + cipher suite)
+
+- New `TlsCipherService` + `TlsCipherCheck`: performs a TLS handshake and reports
+  the negotiated protocol version and cipher name. Flags deprecated protocols
+  (TLS 1.0 / 1.1 / SSLv2 / SSLv3 → `CRITICAL`) and weak cipher patterns
+  (RC4 / 3DES / DES-CBC / NULL / EXPORT / MD5 / RC2 / IDEA / SEED / ARIA / GOST
+  → `WARNING` when on TLS 1.2+). Certificate chain is not validated — the
+  service mirrors `SslCertificateService` (monitoring, not PKI). Callable
+  connector injection for tests; PSR-3 logger on handshake failure.
+
+### CookieSecurityService (Set-Cookie audit)
+
+- New `CookieSecurityService` + `CookieSecurityCheck`: audits every `Set-Cookie`
+  header on a PSR-7 response. A cookie is flagged insecure when missing `Secure`,
+  missing `HttpOnly`, or carrying the `__Host-` prefix without `Path=/` /
+  with `Domain`. `OK` when no cookies are flagged (or no Set-Cookie headers at
+  all), `WARNING` otherwise. Reuses the probe response — no extra request.
+
+### Shared plumbing
+
+- New `CheckName` cases: `EmailSecurity`, `TlsCipher`, `CookieSecurity`.
+- `DomainMonitor` constructor gains three nullable services (additive, default-disabled);
+  `DomainMonitor::create()` factory wires all three by default;
+  `DomainMonitorBuilder::withoutEmailSecurity()` / `withoutTlsCipher()` /
+  `withoutCookieSecurity()` disable them. `CookieSecurityService` (like
+  `SecurityHeadersService`) requires `HttpProbeService` and raises
+  `InvalidArgumentException` if wired alone.
+- `DomainHealthReport` carries three new nullable fields, exposed via
+  `getChecks()` / `getCheck(CheckName::*)` and serialised.
+- New runnable examples: `examples/email-security.php`, `examples/tls-cipher.php`,
+  `examples/cookie-security.php`.
+- README (EN + RU) and `llms.txt` document the new checks, status rules and API
+  reference entries.
+
 ## 1.3.2 — 2026-07-29
 
 - Fix PSR-7 named-argument incompatibility: HTTP-based services

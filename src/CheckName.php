@@ -18,4 +18,7 @@ enum CheckName: string
     case SecurityHeaders = 'security-headers';
     case RobotsTxt = 'robots-txt';
     case Sitemap = 'sitemap';
+    case EmailSecurity = 'email-security';
+    case TlsCipher = 'tls-cipher';
+    case CookieSecurity = 'cookie-security';
 }

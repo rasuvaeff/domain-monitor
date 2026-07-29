@@ -15,7 +15,7 @@ stateless-сервисами. Каждый чекер делает одну ве
 необходимости.
 
 **Проверки:** HTTP-пробы · SSL-сертификаты · WHOIS · DNS · TCP-порты ·
-заголовки безопасности · `robots.txt` · sitemap-ы.
+заголовки безопасности · `robots.txt` · sitemap-ы · email-безопасность (SPF / DKIM / DMARC / CAA / MX) · набор шифров TLS · безопасность cookie.
 
 **Не входит:** планирование, персистентность, кэширование или асинхронные
 раннеры. Пакет предоставляет строительные блоки и оркестратор `DomainMonitor`;
@@ -406,6 +406,61 @@ $content = (new HttpContentCheckService(httpClient: $client, requestFactory: $re
 // HttpContentCheck { status: OK, requiredTextFound: true, forbiddenTextFound: false }
 ```
 
+### Email-безопасность
+
+```php
+use Rasuvaeff\DomainMonitor\EmailSecurityService;
+
+// DKIM зависит от selector'а: передайте список selector'ов для проверки или опустите, чтобы пропустить DKIM.
+$email = (new EmailSecurityService(dkimSelectors: ['google', 'default']))
+    ->check(host: 'example.com');
+// EmailSecurityCheck { status: OK, hasSpf: true, spfRecord: 'v=spf1 -all',
+//                      hasDmarc: true, dmarcPolicy: 'reject', hasDkim: true,
+//                      dkimSelectorsFound: ['google'], hasCaa: true,
+//                      caaRecords: ['letsencrypt.org'], mxRecords: ['mx1.example.com'] }
+```
+
+Статус следует принципу worst-wins:
+- `OK` — SPF + DMARC опубликованы; либо нет MX и нет SPF/DMARC (домен не настроен для приёма почты).
+- `WARNING` — почта принимается (есть MX), но отсутствует SPF или DMARC; либо нет MX, но опубликован только один из SPF/DMARC.
+- `CRITICAL` — почта принимается, но не опубликованы ни SPF, ни DMARC.
+- `UNKNOWN` — DNS-запрос завершился ошибкой.
+
+### Набор шифров TLS
+
+```php
+use Rasuvaeff\DomainMonitor\TlsCipherService;
+
+$tls = (new TlsCipherService())->check(host: 'example.com');
+// TlsCipherCheck { status: OK, tlsVersion: 'TLSv1.3', cipherName: 'TLS_AES_256_GCM_SHA384',
+//                 cipherVersion: 'TLSv1.3', usesWeakCipher: false, weakCipherNames: [] }
+```
+
+Выполняет TLS-рукопожатие и возвращает согласованные версию протокола и шифр. Статусы:
+- `CRITICAL` — согласован TLS 1.0 / 1.1 / SSLv2 / SSLv3 (устаревшие), либо рукопожатие не завершено.
+- `WARNING` — TLS 1.2+ со слабым шифром (RC4 / 3DES / DES-CBC / NULL / EXPORT / MD5 / RC2 / IDEA / SEED / ARIA / GOST).
+- `OK` — TLS 1.2+ с современным шифром.
+- `UNKNOWN` — рукопожатие завершено, но metadata протокола/шифра отсутствует.
+
+Цепочка доверия сертификата **не** проверяется (это мониторинг, не PKI-валидация) — см. `SslCertificateService`.
+
+### Безопасность cookie
+
+```php
+use Rasuvaeff\DomainMonitor\CookieSecurityService;
+
+// Передайте PSR-7 ResponseInterface из предыдущей HTTP-пробы (без дополнительного запроса).
+$cookies = (new CookieSecurityService())->check(response: $response);
+// CookieSecurityCheck { status: WARNING, cookies: [...], insecureCookieNames: ['session'] }
+```
+
+Аудит всех заголовков `Set-Cookie`. Cookie помечается небезопасным если:
+- отсутствует `Secure`;
+- отсутствует `HttpOnly`;
+- префикс `__Host-` без `Path=/` или с `Domain`.
+
+`OK` если нет помеченных cookie, иначе `WARNING` (или `OK`, если заголовков `Set-Cookie` нет вовсе).
+
 ### Сборка отчёта
 
 ```php
@@ -453,10 +508,16 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `SitemapCheck` | DTO: `exists`, `httpStatus`, `urlCount` |
 | `HttpContentCheckService` | Проверка статус-кода + обязательных/запрещённых ключевых слов → `HttpContentCheck`; `checkFromResponse()` для переиспользования ответа |
 | `HttpContentCheck` | DTO: `status`, `httpStatus`, `?finalUrl`, текстовые флаги |
+| `EmailSecurityService` | Проверка SPF / DMARC / DKIM (selector'ы опциональны) / CAA / MX через `dns_get_record` → `EmailSecurityCheck` |
+| `EmailSecurityCheck` | DTO: флаги по каждой записи + `mxRecords`, `caaRecords`, `dkimSelectorsFound`, worst-wins `status` |
+| `TlsCipherService` | TLS-рукопожатие для чтения согласованных протокола + шифра; инжекция callable-коннектора; флаги слабых шифров / устаревших протоколов → `TlsCipherCheck` |
+| `TlsCipherCheck` | DTO: `tlsVersion`, `cipherName`, `cipherVersion`, `usesWeakCipher`, `weakCipherNames`, worst-wins `status` |
+| `CookieSecurityService` | Аудит заголовков `Set-Cookie` на PSR-7 response: правила Secure / HttpOnly / `__Host-` prefix → `CookieSecurityCheck` |
+| `CookieSecurityCheck` | DTO: разобранные флаги для каждого cookie + `insecureCookieNames`, worst-wins `status` |
 | `DomainHealthReport` | Составной DTO для всех результатов проверок; `getStatus()` агрегат, `getChecks()`/`getCheck()` по каждой проверке, `getErrors()`/`hasErrors()`, `JsonSerializable` |
 | `CheckResult` | DTO: `check` (`CheckName`), `status` (`CheckStatus`), `reason` (человекочитаемый) |
 | `CheckError` | DTO: `check` (`CheckName`), `message` — проверка, которая запускалась, но упала |
-| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap` |
+| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap`, `EmailSecurity`, `TlsCipher`, `CookieSecurity` |
 | `CheckStatus` | Enum: `OK`, `WARNING`, `CRITICAL`, `UNKNOWN` |
 
 ## Безопасность
@@ -481,7 +542,11 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `security-headers.php` | Проверка заголовков безопасности на живом URL | Да |
 | `robots.php` | Загрузка `/robots.txt` и извлечение sitemap-ов | Да |
 | `sitemap.php` | Загрузка sitemap и подсчёт URL-ов | Да |
+| `email-security.php` | Проверка SPF / DMARC / DKIM / CAA / MX через DNS | Да |
+| `tls-cipher.php` | Версия протокола TLS + набор шифров, обнаружение слабых шифров | Да |
+| `cookie-security.php` | Атрибуты Set-Cookie (Secure / HttpOnly / SameSite / `__Host-`) | Да |
 | `report.php` | Сборка `DomainHealthReport` из DTO | Нет |
+| `report-diff.php` | Diff двух отчётов в per-check переходы статусов | Нет |
 
 Запуск примеров:
 

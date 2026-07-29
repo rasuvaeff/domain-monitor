@@ -63,9 +63,7 @@ final class DomainMonitorTest
             new DomainMonitor(securityHeaders: new SecurityHeadersService());
             Assert::fail('Expected InvalidArgumentException');
         } catch (InvalidArgumentException $e) {
-            Assert::string($e->getMessage())->contains(
-                'SecurityHeadersService requires HttpProbeService to obtain an HTTP response',
-            );
+            Assert::string($e->getMessage())->contains('HttpProbeService');
         }
     }
 
