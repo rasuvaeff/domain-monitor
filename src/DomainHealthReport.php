@@ -25,9 +25,11 @@ final readonly class DomainHealthReport implements JsonSerializable
         public ?SecurityHeadersCheck $securityHeaders = null,
         public ?RobotsTxtCheck $robotsTxt = null,
         public ?SitemapCheck $sitemap = null,
-        public ?EmailSecurityCheck $emailSecurity = null,
         public ?ReportThresholds $thresholds = null,
         public array $errors = [],
+        public ?EmailSecurityCheck $emailSecurity = null,
+        public ?TlsCipherCheck $tlsCipher = null,
+        public ?CookieSecurityCheck $cookieSecurity = null,
     ) {}
 
     /**
@@ -76,6 +78,14 @@ final readonly class DomainHealthReport implements JsonSerializable
 
         if ($this->emailSecurity !== null) {
             $results[] = $this->emailSecurityCheck(check: $this->emailSecurity);
+        }
+
+        if ($this->tlsCipher !== null) {
+            $results[] = $this->tlsCipherCheck(check: $this->tlsCipher);
+        }
+
+        if ($this->cookieSecurity !== null) {
+            $results[] = $this->cookieSecurityCheck(check: $this->cookieSecurity);
         }
 
         foreach ($this->errors as $error) {
@@ -147,6 +157,8 @@ final readonly class DomainHealthReport implements JsonSerializable
             'robotsTxt' => $this->robotsTxt,
             'sitemap' => $this->sitemap,
             'emailSecurity' => $this->emailSecurity,
+            'tlsCipher' => $this->tlsCipher,
+            'cookieSecurity' => $this->cookieSecurity,
         ];
     }
 
@@ -389,5 +401,19 @@ final readonly class DomainHealthReport implements JsonSerializable
             : \sprintf('%d MX; policies: %s', \count($check->mxRecords), \implode(separator: ', ', array: $parts));
 
         return new CheckResult(check: CheckName::EmailSecurity, status: $check->status, reason: $reason);
+    }
+
+    private function tlsCipherCheck(TlsCipherCheck $check): CheckResult
+    {
+        $reason = $check->tlsVersion === null
+            ? ($check->reason ?? 'TLS metadata unavailable')
+            : \sprintf('%s %s%s', $check->tlsVersion, $check->cipherName ?? '', $check->usesWeakCipher ? ' (weak)' : '');
+
+        return new CheckResult(check: CheckName::TlsCipher, status: $check->status, reason: $reason);
+    }
+
+    private function cookieSecurityCheck(CookieSecurityCheck $check): CheckResult
+    {
+        return new CheckResult(check: CheckName::CookieSecurity, status: $check->status, reason: $check->reason ?? '');
     }
 }

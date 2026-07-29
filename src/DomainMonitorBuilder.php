@@ -31,6 +31,8 @@ final class DomainMonitorBuilder
     private bool $sitemap = true;
     private bool $content = true;
     private bool $emailSecurity = true;
+    private bool $tlsCipher = true;
+    private bool $cookieSecurity = true;
 
     private function __construct()
     {
@@ -127,6 +129,20 @@ final class DomainMonitorBuilder
         return $this;
     }
 
+    public function withoutTlsCipher(): self
+    {
+        $this->tlsCipher = false;
+
+        return $this;
+    }
+
+    public function withoutCookieSecurity(): self
+    {
+        $this->cookieSecurity = false;
+
+        return $this;
+    }
+
     public function build(): DomainMonitor
     {
         $hasHttp = $this->httpClient !== null && $this->requestFactory !== null;
@@ -153,6 +169,8 @@ final class DomainMonitorBuilder
                 ? new HttpContentCheckService(httpClient: $this->httpClient, requestFactory: $this->requestFactory)
                 : null,
             emailSecurity: $this->emailSecurity ? new EmailSecurityService() : null,
+            tlsCipher: $this->tlsCipher ? new TlsCipherService() : null,
+            cookieSecurity: $this->cookieSecurity && $httpProbe !== null ? new CookieSecurityService() : null,
         );
     }
 }

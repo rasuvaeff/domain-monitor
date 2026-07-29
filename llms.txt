@@ -12,7 +12,9 @@ composer require rasuvaeff/domain-monitor
 - Host-only inputs go to host services; HTTP services require `http://` or `https://` URLs.
 - `SslCertificateService` reads peer certificates best-effort and does not verify trust.
 - `EmailSecurityService` uses `dns_get_record` for SPF / DMARC / DKIM (selectors opt-in via constructor) / CAA / MX. No HTTP client needed.
-- `DomainMonitor` orchestrator runs all configured services in one call, reuses the HTTP response for probe + security headers + content check. Services are optional: `null` = check disabled.
+- `TlsCipherService` performs a TLS handshake to read negotiated protocol + cipher; callable connector injection for tests. Does not validate certificate chain.
+- `CookieSecurityService` audits `Set-Cookie` headers on a PSR-7 response (Secure / HttpOnly / `__Host-` prefix rules); requires an HTTP probe response.
+- `DomainMonitor` orchestrator runs all configured services in one call, reuses the HTTP response for probe + security headers + content + cookie checks. Services are optional: `null` = check disabled.
 - `DomainMonitor::create($client, $factory, $whois?)` wires every check with defaults; `DomainMonitorBuilder` composes granularly. `DomainMonitor implements DomainMonitorInterface`.
 - `DomainMonitor` catches exceptions per check; a failed check becomes a `CheckError` (see `getErrors()`/`hasErrors()`), reported as `UNKNOWN`, not silently dropped. Disabled check = `null`.
 - Read the report via `getChecks()` (`list<CheckResult>` with `reason`) / `getCheck(CheckName)`; `getStatus()` is the aggregate.
@@ -168,6 +170,31 @@ $email = (new EmailSecurityService(dkimSelectors: ['google', 'default']))
 //                    WARNING (MX present, SPF or DMARC missing),
 //                    CRITICAL (MX present, both SPF+DMARC missing),
 //                    UNKNOWN (DNS lookup failed).
+```
+
+### Check TLS cipher suite
+
+```php
+use Rasuvaeff\DomainMonitor\TlsCipherService;
+
+$tls = (new TlsCipherService())->check(host: 'example.com', port: 443);
+// TlsCipherCheck { status, tlsVersion, cipherName, cipherVersion, usesWeakCipher, weakCipherNames }
+// status: CRITICAL (TLS 1.0/1.1/SSL negotiated, or handshake incomplete),
+//         WARNING (TLS 1.2+ with weak cipher: RC4/3DES/DES-CBC/NULL/EXPORT/MD5/RC2/IDEA/SEED/ARIA/GOST),
+//         OK (TLS 1.2+ with modern cipher),
+//         UNKNOWN (handshake succeeded but metadata missing).
+```
+
+### Check cookie security
+
+```php
+use Rasuvaeff\DomainMonitor\CookieSecurityService;
+
+$cookies = (new CookieSecurityService())->check(response: $response);
+// CookieSecurityCheck { status, cookies[{name,secure,httpOnly,sameSite,path,domain,hostPrefixed}],
+//                       insecureCookieNames, reason }
+// status: OK (no Set-Cookie, or all cookies Secure+HttpOnly+__Host- rules satisfied),
+//         WARNING (any cookie missing Secure, HttpOnly, or __Host- prefix rules).
 ```
 
 ### Build a report

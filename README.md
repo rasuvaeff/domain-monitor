@@ -11,7 +11,7 @@
 
 A modular domain monitoring toolkit for PHP 8.3+. Zero-framework, PSR-compatible, with small immutable DTOs and focused stateless services. Each checker does one thing — you compose them as needed.
 
-**Checks:** HTTP probing · SSL certificates · WHOIS · DNS · TCP ports · security headers · `robots.txt` · sitemaps · email security (SPF / DKIM / DMARC / CAA / MX).
+**Checks:** HTTP probing · SSL certificates · WHOIS · DNS · TCP ports · security headers · `robots.txt` · sitemaps · email security (SPF / DKIM / DMARC / CAA / MX) · TLS cipher suite · cookie security.
 
 **Does not include:** scheduling, persistence, caching, or async runners. The package provides building blocks and a `DomainMonitor` orchestrator; your application provides the workflow.
 
@@ -392,6 +392,41 @@ Status follows worst-wins:
 - `CRITICAL` — mail accepted but neither SPF nor DMARC published.
 - `UNKNOWN` — DNS lookup failed.
 
+### TLS cipher suite
+
+```php
+use Rasuvaeff\DomainMonitor\TlsCipherService;
+
+$tls = (new TlsCipherService())->check(host: 'example.com');
+// TlsCipherCheck { status: OK, tlsVersion: 'TLSv1.3', cipherName: 'TLS_AES_256_GCM_SHA384',
+//                 cipherVersion: 'TLSv1.3', usesWeakCipher: false, weakCipherNames: [] }
+```
+
+Performs a TLS handshake and reports the negotiated protocol version and cipher. Flags:
+- `CRITICAL` — TLS 1.0 / 1.1 / SSLv2 / SSLv3 negotiated (deprecated), or handshake incomplete.
+- `WARNING` — TLS 1.2+ with a weak cipher in use (RC4 / 3DES / DES-CBC / NULL / EXPORT / MD5 / RC2 / IDEA / SEED / ARIA / GOST).
+- `OK` — TLS 1.2+ with a modern cipher.
+- `UNKNOWN` — handshake succeeded but protocol/cipher metadata is missing.
+
+Certificate chain is **not** verified (monitoring, not PKI validation) — see `SslCertificateService` for that.
+
+### Cookie security
+
+```php
+use Rasuvaeff\DomainMonitor\CookieSecurityService;
+
+// Pass the PSR-7 ResponseInterface from a prior HTTP probe (no extra request).
+$cookies = (new CookieSecurityService())->check(response: $response);
+// CookieSecurityCheck { status: WARNING, cookies: [...], insecureCookieNames: ['session'] }
+```
+
+Audits every `Set-Cookie` header. A cookie is flagged insecure when:
+- missing `Secure`;
+- missing `HttpOnly`;
+- `__Host-` prefix without `Path=/` and without `Domain`.
+
+`OK` when no cookies are flagged, `WARNING` otherwise (or `OK` when there are no `Set-Cookie` headers).
+
 ### Build a report
 
 ```php
@@ -441,10 +476,14 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `HttpContentCheck` | DTO: `status`, `httpStatus`, `?finalUrl`, text flags |
 | `EmailSecurityService` | Inspect SPF / DMARC / DKIM (selectors opt-in) / CAA / MX via `dns_get_record` → `EmailSecurityCheck` |
 | `EmailSecurityCheck` | DTO: per-record flags + `mxRecords`, `caaRecords`, `dkimSelectorsFound`, worst-wins `status` |
+| `TlsCipherService` | TLS handshake to read negotiated protocol + cipher; callable connector injection; flags weak ciphers / deprecated protocols → `TlsCipherCheck` |
+| `TlsCipherCheck` | DTO: `tlsVersion`, `cipherName`, `cipherVersion`, `usesWeakCipher`, `weakCipherNames`, worst-wins `status` |
+| `CookieSecurityService` | Audit `Set-Cookie` headers on a PSR-7 response: Secure / HttpOnly / `__Host-` prefix rules → `CookieSecurityCheck` |
+| `CookieSecurityCheck` | DTO: per-cookie parsed flags + `insecureCookieNames`, worst-wins `status` |
 | `DomainHealthReport` | Composite DTO for all check results; `getStatus()` aggregate, `getChecks()`/`getCheck()` per-check, `getErrors()`/`hasErrors()`, `JsonSerializable` |
 | `CheckResult` | DTO: `check` (`CheckName`), `status` (`CheckStatus`), `reason` (human-readable) |
 | `CheckError` | DTO: `check` (`CheckName`), `message` — a check that ran but threw |
-| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap`, `EmailSecurity` |
+| `CheckName` | Enum: `Probe`, `Ssl`, `Whois`, `Dns`, `Content`, `Port`, `SecurityHeaders`, `RobotsTxt`, `Sitemap`, `EmailSecurity`, `TlsCipher`, `CookieSecurity` |
 | `CheckStatus` | Enum: `OK`, `WARNING`, `CRITICAL`, `UNKNOWN` |
 
 ## Security
@@ -468,6 +507,8 @@ See [examples/](examples/) for runnable scripts.
 | `robots.php` | Fetch `/robots.txt` and extract sitemaps | Yes |
 | `sitemap.php` | Fetch sitemap and count URLs | Yes |
 | `email-security.php` | Inspect SPF / DMARC / DKIM / CAA / MX via DNS | Yes |
+| `tls-cipher.php` | TLS protocol version + cipher suite, weak-cipher detection | Yes |
+| `cookie-security.php` | Set-Cookie attributes (Secure / HttpOnly / SameSite / `__Host-`) | Yes |
 | `report.php` | Build a `DomainHealthReport` from DTOs | No |
 | `report-diff.php` | Diff two reports into per-check status transitions | No |
 

@@ -31,10 +31,12 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         public ?SitemapService $sitemap = null,
         public ?HttpContentCheckService $content = null,
         public ?EmailSecurityService $emailSecurity = null,
+        public ?TlsCipherService $tlsCipher = null,
+        public ?CookieSecurityService $cookieSecurity = null,
     ) {
-        if ($securityHeaders !== null && $httpProbe === null) {
+        if (($securityHeaders !== null || $cookieSecurity !== null) && $httpProbe === null) {
             throw new \InvalidArgumentException(
-                message: 'SecurityHeadersService requires HttpProbeService to obtain an HTTP response',
+                message: 'SecurityHeadersService and CookieSecurityService require HttpProbeService to obtain an HTTP response',
             );
         }
     }
@@ -60,6 +62,8 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             sitemap: new SitemapService(httpClient: $httpClient, requestFactory: $requestFactory),
             content: new HttpContentCheckService(httpClient: $httpClient, requestFactory: $requestFactory),
             emailSecurity: new EmailSecurityService(),
+            tlsCipher: new TlsCipherService(),
+            cookieSecurity: new CookieSecurityService(),
         );
     }
 
@@ -228,6 +232,34 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             );
         }
 
+        $tlsCipher = null;
+        $tlsCipherService = $this->tlsCipher;
+
+        if ($tlsCipherService !== null) {
+            $tlsCipher = $this->runCheck(
+                name: CheckName::TlsCipher,
+                host: $normalizedHost,
+                callback: fn() => $tlsCipherService->check(
+                    host: $normalizedHost,
+                    port: $options->port,
+                    timeoutSeconds: $options->timeoutSeconds,
+                ),
+                errors: $errors,
+            );
+        }
+
+        $cookieSecurity = null;
+        $cookieSecurityService = $this->cookieSecurity;
+
+        if ($response !== null && $cookieSecurityService !== null) {
+            $cookieSecurity = $this->runCheck(
+                name: CheckName::CookieSecurity,
+                host: $normalizedHost,
+                callback: fn() => $cookieSecurityService->check(response: $response),
+                errors: $errors,
+            );
+        }
+
         return new DomainHealthReport(
             host: $normalizedHost,
             probe: $probe,
@@ -239,9 +271,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             securityHeaders: $securityHeaders,
             robotsTxt: $robotsTxt,
             sitemap: $sitemap,
-            emailSecurity: $emailSecurity,
             thresholds: $options->thresholds,
             errors: $errors,
+            emailSecurity: $emailSecurity,
+            tlsCipher: $tlsCipher,
+            cookieSecurity: $cookieSecurity,
         );
     }
 
