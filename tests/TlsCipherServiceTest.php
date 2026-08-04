@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use Closure;
+use Psr\Log\AbstractLogger;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\TlsCipherService;
+use Stringable;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
@@ -157,6 +159,27 @@ final class TlsCipherServiceTest
         Assert::string($check->reason)->contains('TLS handshake failed');
     }
 
+    public function logsHandshakeFailureWithHostPortAndError(): void
+    {
+        $logger = new RecordingLogger();
+
+        $connector = static function (string $host, int $port, float $timeout): array {
+            unset($host, $port, $timeout);
+
+            throw new \RuntimeException(message: 'Connection refused');
+        };
+
+        (new TlsCipherService(connector: $connector, logger: $logger))->check(host: 'example.com', port: 8443);
+
+        Assert::same($logger->records, [
+            [
+                'level' => 'error',
+                'message' => 'TLS handshake failed',
+                'context' => ['host' => 'example.com', 'port' => 8443, 'error' => 'Connection refused'],
+            ],
+        ]);
+    }
+
     public function returnsUnknownWhenConnectorReturnsFalse(): void
     {
         $connector = static fn(string $host, int $port, float $timeout): array|false => false;
@@ -184,6 +207,32 @@ final class TlsCipherServiceTest
         Assert::same($check->status, CheckStatus::UNKNOWN);
     }
 
+    public function treatsEmptyCipherNameAsMissing(): void
+    {
+        $connector = $this->connector(['crypto' => [
+            'protocol' => 'TLSv1.3',
+            'cipher_name' => '',
+        ]]);
+
+        $check = (new TlsCipherService(connector: $connector))->check(host: 'example.com');
+
+        Assert::same($check->status, CheckStatus::UNKNOWN);
+        Assert::null($check->cipherName);
+    }
+
+    public function treatsNonStringProtocolValueAsMissing(): void
+    {
+        $connector = $this->connector(['crypto' => [
+            'protocol' => 123,
+            'cipher_name' => 'TLS_AES_256_GCM_SHA384',
+        ]]);
+
+        $check = (new TlsCipherService(connector: $connector))->check(host: 'example.com');
+
+        Assert::same($check->status, CheckStatus::UNKNOWN);
+        Assert::null($check->tlsVersion);
+    }
+
     public function passesPortAndTimeoutToConnector(): void
     {
         $received = [];
@@ -205,5 +254,22 @@ final class TlsCipherServiceTest
     private function connector(array $meta): Closure
     {
         return static fn(string $host, int $port, float $timeout): array => $meta;
+    }
+}
+
+final class RecordingLogger extends AbstractLogger
+{
+    /**
+     * @var list<array{level: mixed, message: string, context: array<string, mixed>}>
+     */
+    public array $records = [];
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    #[\Override]
+    public function log(mixed $level, string|Stringable $message, array $context = []): void
+    {
+        $this->records[] = ['level' => $level, 'message' => (string) $message, 'context' => $context];
     }
 }
