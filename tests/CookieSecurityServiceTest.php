@@ -183,6 +183,16 @@ final class CookieSecurityServiceTest
         Assert::same($check->cookies[0]['domain'], 'example.com');
     }
 
+    public function doesNotTreatCookieNameAsAnAttribute(): void
+    {
+        $response = $this->response(['secure; HttpOnly']);
+
+        $check = (new CookieSecurityService())->check(response: $response);
+
+        Assert::same($check->status, CheckStatus::WARNING);
+        Assert::same($check->insecureCookieNames, ['secure']);
+    }
+
     /**
      * @param list<string> $setCookie
      */

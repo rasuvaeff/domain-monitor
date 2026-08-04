@@ -21,6 +21,7 @@ use Rasuvaeff\PropertyTesting\Gen;
 use Rasuvaeff\PropertyTesting\Property;
 use Testo\Assert;
 use Testo\Codecov\Covers;
+use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
 
 #[Test]
@@ -32,6 +33,7 @@ final class ReportComparatorTest
 {
     private ReportComparator $comparator;
 
+    #[BeforeTest]
     public function setUp(): void
     {
         $this->comparator = new ReportComparator();

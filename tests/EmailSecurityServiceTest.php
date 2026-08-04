@@ -125,6 +125,7 @@ final class EmailSecurityServiceTest
 
         Assert::same($check->status, CheckStatus::UNKNOWN);
         Assert::same($check->reason, 'DNS lookup failed');
+        Assert::false($check->hasSpf);
     }
 
     public function returnsUnknownWhenRootResolverReturnsFalse(): void
@@ -206,6 +207,205 @@ final class EmailSecurityServiceTest
 
         Assert::true($check->hasDkim);
         Assert::same($check->dkimSelectorsFound, ['google']);
+    }
+
+    public function ignoresNonTxtRecordTypeEvenWithTxtField(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'CNAME', 'txt' => 'v=spf1 -all']],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::false($check->hasSpf);
+        Assert::null($check->spfRecord);
+    }
+
+    public function continuesPastNonTxtRecordsToLaterTxtRecords(): void
+    {
+        $resolver = $this->resolver(
+            root: [
+                ['type' => 'MX', 'target' => 'mx1.example.com'],
+                ['type' => 'TXT', 'txt' => 'v=spf1 -all'],
+            ],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::true($check->hasSpf);
+    }
+
+    public function findsSpfAmongMultipleTxtRecords(): void
+    {
+        $resolver = $this->resolver(
+            root: [
+                ['type' => 'TXT', 'txt' => 'google-site-verification=abc'],
+                ['type' => 'TXT', 'txt' => 'v=spf1 -all'],
+            ],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::true($check->hasSpf);
+        Assert::same($check->spfRecord, 'v=spf1 -all');
+    }
+
+    public function ignoresNonMxRecordTypeEvenWithTargetField(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'CNAME', 'target' => 'mx1.example.com']],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::same($check->mxRecords, []);
+    }
+
+    public function ignoresNonCaaRecordTypeEvenWithIssueTag(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'CNAME', 'tag' => 'issue', 'value' => 'letsencrypt.org']],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::same($check->caaRecords, []);
+    }
+
+    public function treatsCaaIssueTagCaseInsensitively(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'CAA', 'tag' => 'ISSUE', 'value' => 'letsencrypt.org']],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::true($check->hasCaa);
+        Assert::same($check->caaRecords, ['letsencrypt.org']);
+    }
+
+    public function continuesPastNonIssueCaaRecordsToLaterIssueRecords(): void
+    {
+        $resolver = $this->resolver(
+            root: [
+                ['type' => 'CAA', 'tag' => 'iodef', 'value' => 'mailto:abuse@example.com'],
+                ['type' => 'CAA', 'tag' => 'issue', 'value' => 'letsencrypt.org'],
+            ],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::same($check->caaRecords, ['letsencrypt.org']);
+    }
+
+    public function collectsMultipleCaaIssuers(): void
+    {
+        $resolver = $this->resolver(
+            root: [
+                ['type' => 'CAA', 'tag' => 'issue', 'value' => 'letsencrypt.org'],
+                ['type' => 'CAA', 'tag' => 'issue', 'value' => 'sectigo.com'],
+            ],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::same($check->caaRecords, ['letsencrypt.org', 'sectigo.com']);
+    }
+
+    public function ignoresNonStringMxTarget(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'MX', 'target' => 42]],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::same($check->mxRecords, []);
+    }
+
+    public function requiresSpfPatternAtStartOfRecord(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'TXT', 'txt' => 'foo v=spf1 -all']],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::false($check->hasSpf);
+    }
+
+    public function matchesSpfPatternCaseInsensitively(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'TXT', 'txt' => 'V=SPF1 -all']],
+            dmarc: [],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::true($check->hasSpf);
+    }
+
+    public function requiresDmarcPatternAtStartOfRecord(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'MX', 'target' => 'mx1.example.com']],
+            dmarc: [['type' => 'TXT', 'txt' => 'foo v=DMARC1; p=reject']],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::false($check->hasDmarc);
+    }
+
+    public function continuesPastNonDmarcTxtRecordsToLaterDmarcRecord(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'MX', 'target' => 'mx1.example.com']],
+            dmarc: [
+                ['type' => 'TXT', 'txt' => 'some other txt record'],
+                ['type' => 'TXT', 'txt' => 'v=DMARC1; p=reject'],
+            ],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::true($check->hasDmarc);
+        Assert::same($check->dmarcPolicy, 'reject');
+    }
+
+    public function lowercasesDmarcPolicyCaseInsensitively(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'MX', 'target' => 'mx1.example.com']],
+            dmarc: [['type' => 'TXT', 'txt' => 'v=DMARC1; P=Reject']],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::same($check->dmarcPolicy, 'reject');
+    }
+
+    public function returnsOkWhenNoMxButBothPoliciesPresent(): void
+    {
+        $resolver = $this->resolver(
+            root: [['type' => 'TXT', 'txt' => 'v=spf1 -all']],
+            dmarc: [['type' => 'TXT', 'txt' => 'v=DMARC1; p=reject']],
+        );
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::same($check->status, CheckStatus::OK);
     }
 
     public function deduplicatesMxTargets(): void
