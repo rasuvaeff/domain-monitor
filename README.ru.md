@@ -240,6 +240,42 @@ $report = $monitor->check(
 `ReportThresholds::legacy()` точно воспроизводит поведение до версии 2.0
 (`sslWarnDays: null`).
 
+### Временной бюджет
+
+`DomainMonitorOptions::maxDuration: ?Duration` ограничивает один прогон
+`check()`. После дедлайна каждая оставшаяся проверка пропускается и
+записывается как слот `Err` («Time budget exceeded», `UNKNOWN` в
+`getChecks()` — не завышает агрегат):
+
+```php
+use Rasuvaeff\Duration\Duration;
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(maxDuration: Duration::seconds(5)),
+);
+```
+
+`null` (по умолчанию) = без бюджета. Бюджет действует на один вызов
+`check()` — медленный хост не съедает бюджет следующего.
+
+### Пакетные проверки
+
+`checkMany(hosts:, options:)` прогоняет полный пайплайн по списку хостов и
+ключует результаты по нормализованному хосту:
+
+```php
+$reports = $monitor->checkMany(
+    hosts: ['example.com', 'https://EXAMPLE.org/path'],
+);
+
+$status = $reports['example.org']->getStatus(); // ключи нормализованы
+```
+
+Последовательно by design (параллельное исполнение не входит в 2.0); каждый
+хост получает свежий временной бюджет. Невалидный хост прерывает батч
+`InvalidArgumentException` из нормализации хоста.
+
 ### Повторы
 
 Транзиентные сетевые сбои (DNS-ики, TCP-ресеты, таймауты соединения) — шум для

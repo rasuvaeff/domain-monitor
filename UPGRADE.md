@@ -3,6 +3,18 @@
 Breaking changes and step-by-step migration. Each section is standalone;
 apply in any order. Code that does not touch the affected API needs no changes.
 
+## Time budget and batch API (E2/E3)
+
+Additive, but timed for the 2.0 major by design.
+
+- `DomainMonitorOptions::maxDuration: ?Duration` — cap a single `check()` run.
+  Past the deadline every remaining check is skipped as an `Err` slot
+  ("Time budget exceeded"). Default `null` (no budget) preserves 1.x timing.
+- `DomainMonitorInterface::checkMany(hosts:, options:)` —
+  `array<string, DomainHealthReport>` keyed by normalized host. Sequential;
+  an invalid host aborts the batch with `InvalidArgumentException`.
+  Implementations of `DomainMonitorInterface` must add the method.
+
 ## Requirements
 
 - PHP 8.3+ (unchanged)
@@ -84,10 +96,3 @@ $error = $slot?->error();          // CheckError when Err
   slot ("Service returned no result") instead of an invisible `null` slot.
 - `getChecks()` ordering: failed checks appear in their slot position instead
   of being appended after successful ones.
-
-## TODO: sections
-
-The following sections are added by their respective pull requests into the
-`2.0` branch:
-
-- [ ] Time budget and batch API (E2/E3)

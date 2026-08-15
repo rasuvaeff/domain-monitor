@@ -219,6 +219,35 @@ $report = $monitor->check(
 
 `ReportThresholds::legacy()` reproduces pre-2.0 behaviour exactly (`sslWarnDays: null`).
 
+### Time budget
+
+`DomainMonitorOptions::maxDuration: ?Duration` caps a single `check()` run. Once the deadline passes, every remaining check is skipped and recorded as an `Err` slot (`"Time budget exceeded"`, `UNKNOWN` in `getChecks()` — never inflating the aggregate):
+
+```php
+use Rasuvaeff\Duration\Duration;
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(maxDuration: Duration::seconds(5)),
+);
+```
+
+`null` (default) = no budget. The budget is per `check()` call — a slow host does not eat into the next one.
+
+### Batch checks
+
+`checkMany(hosts:, options:)` runs the full pipeline for a list of hosts and keys the results by normalized host:
+
+```php
+$reports = $monitor->checkMany(
+    hosts: ['example.com', 'https://EXAMPLE.org/path'],
+);
+
+$status = $reports['example.org']->getStatus(); // keys are normalized
+```
+
+Sequential by design (parallel execution is not on the roadmap for 2.0); each host gets a fresh time budget. An invalid host aborts the batch with `InvalidArgumentException` from host normalization.
+
 ### Retries
 
 Transient network failures (DNS hiccups, TCP resets, connection timeouts) are noise for a monitoring tool. Pass a [`rasuvaeff/retry`](https://github.com/rasuvaeff/retry) policy to retry every check — including the HTTP probe — with backoff and jitter:

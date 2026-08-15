@@ -32,6 +32,7 @@ final readonly class DomainMonitorOptions
         public ?Retry $retry = null,
         public ?CircuitBreaker $circuitBreaker = null,
         public ?Duration $timeout = null,
+        public ?Duration $maxDuration = null,
     ) {
         if ($port < 1 || $port > 65535) {
             throw new InvalidArgumentException(message: \sprintf('Invalid port %d', $port));

@@ -32,6 +32,7 @@ final class DomainMonitorOptionsTest
         Assert::null($options->retry);
         Assert::null($options->circuitBreaker);
         Assert::null($options->timeout);
+        Assert::null($options->maxDuration);
     }
 
     public function withTimeoutResolvesSecondsFromDuration(): void

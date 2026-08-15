@@ -11,6 +11,15 @@ Breaking major. See [UPGRADE.md](UPGRADE.md) for step-by-step migration.
   so breaking PRs for this release are gated, not blindly waved through.
 - `UPGRADE.md` added: per-step migration for every breaking change below.
 
+### Time budget and batch API (E2/E3)
+
+- `DomainMonitorOptions::maxDuration: ?Duration` caps a single `check()` run;
+  past the deadline every remaining check becomes an `Err` slot
+  ("Time budget exceeded"). `null` (default) = no budget.
+- `DomainMonitorInterface::checkMany(hosts:, options:)` returns
+  `array<string, DomainHealthReport>` keyed by normalized host; sequential,
+  fresh budget per host.
+
 ### Result-typed report slots (D1)
 
 - `rasuvaeff/result` is now a runtime dependency.
