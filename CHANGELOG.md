@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0 — 2026-08-15
+
+Breaking major. See [UPGRADE.md](UPGRADE.md) for step-by-step migration.
+
+### 2.0 plumbing
+
+- CI: the `Backward compatibility` step learns the intended-major tolerance
+  (a dated `## X.0.0` heading in this file over the latest tag passes code 3),
+  so breaking PRs for this release are gated, not blindly waved through.
+- `UPGRADE.md` added: per-step migration for every breaking change below.
+
 ## 1.5.0 — 2026-08-15
 
 ### Retries (roadmap B1)
