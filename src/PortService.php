@@ -17,7 +17,7 @@ final readonly class PortService
     public function __construct(?callable $connector = null)
     {
         $this->connector = $connector === null
-            ? self::defaultConnector()
+            ? $this->defaultConnector()
             : Closure::fromCallable(callback: $connector);
     }
 
@@ -46,7 +46,7 @@ final readonly class PortService
         );
     }
 
-    private static function defaultConnector(): Closure
+    private function defaultConnector(): Closure
     {
         return static function (string $host, int $port, float $timeoutSeconds): array {
             $errorMessage = null;

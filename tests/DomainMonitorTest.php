@@ -348,12 +348,12 @@ final class DomainMonitorTest
 
         $monitor = new DomainMonitor(
             httpProbe: new HttpProbeService(httpClient: $probeClient, requestFactory: new FakeRequestFactory()),
-            securityHeaders: new SecurityHeadersService(),
-            content: new HttpContentCheckService(httpClient: $probeClient, requestFactory: new FakeRequestFactory()),
-            robotsTxt: new RobotsTxtService(httpClient: $robotsClient, requestFactory: new FakeRequestFactory()),
-            sitemap: new SitemapService(httpClient: $sitemapClient, requestFactory: new FakeRequestFactory()),
             dns: new DnsService(resolver: static fn(): array|false => [['type' => 'A', 'ip' => '1.2.3.4']]),
             port: new PortService(connector: static fn(): array => ['success' => true, 'connectTime' => 0.02, 'error' => null]),
+            securityHeaders: new SecurityHeadersService(),
+            robotsTxt: new RobotsTxtService(httpClient: $robotsClient, requestFactory: new FakeRequestFactory()),
+            sitemap: new SitemapService(httpClient: $sitemapClient, requestFactory: new FakeRequestFactory()),
+            content: new HttpContentCheckService(httpClient: $probeClient, requestFactory: new FakeRequestFactory()),
         );
 
         $report = $monitor->check(host: 'example.com');

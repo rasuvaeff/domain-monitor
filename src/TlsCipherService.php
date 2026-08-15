@@ -202,7 +202,7 @@ final readonly class TlsCipherService
                     return false;
                 }
 
-                \stream_socket_enable_crypto($stream, true);
+                \stream_socket_enable_crypto($stream, enable: true);
                 $meta = \stream_get_meta_data(stream: $stream);
                 \fclose(stream: $stream);
 

@@ -17,6 +17,7 @@ use Rasuvaeff\DomainMonitor\StatusTransition;
 use Rasuvaeff\DomainMonitor\TldInfo;
 use Rasuvaeff\DomainMonitor\TransitionKind;
 use Rasuvaeff\PropertyTesting\ArbitraryInterface;
+use Rasuvaeff\PropertyTesting\Classify;
 use Rasuvaeff\PropertyTesting\Gen;
 use Rasuvaeff\PropertyTesting\Property;
 use Testo\Assert;
@@ -224,6 +225,12 @@ final class ReportComparatorTest
         Assert::notNull($fromCheck);
         Assert::notNull($toCheck);
 
+        // 200–599 maps onto three statuses in uneven blocks — 2xx/3xx are half
+        // the range — so a same-status pair is ~37% of draws and a changed one
+        // ~63%. Both floors sit well clear of that.
+        Classify::cover($fromCheck->status !== $toCheck->status, 'status changed', 40.0);
+        Classify::cover($fromCheck->status === $toCheck->status, 'status unchanged', 20.0);
+
         if ($fromCheck->status === $toCheck->status) {
             Assert::same($forward, []);
             Assert::same($backward, []);
@@ -306,6 +313,15 @@ final class ReportComparatorTest
     public function worstTransitionCarriesMaxSeverity(DomainHealthReport $previous, DomainHealthReport $current): void
     {
         $diff = $this->comparator->compare(previous: $previous, current: $current);
+
+        // The no-changes arm asserts one thing and returns; without a floor on
+        // the other arm, a generator that started producing near-identical
+        // reports would leave the ranking itself unverified and the property
+        // still green. Two independently drawn reports agree on every check
+        // only a few percent of the time, so that floor is deliberately low —
+        // it exists to catch an arm becoming unreachable, not to pin a share.
+        Classify::cover($diff->hasChanges(), 'reports differ', 50.0);
+        Classify::cover(!$diff->hasChanges(), 'reports identical', 1.0);
 
         if (!$diff->hasChanges()) {
             Assert::null($diff->worstTransition());

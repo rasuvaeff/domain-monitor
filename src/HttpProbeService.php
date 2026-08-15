@@ -84,7 +84,7 @@ final readonly class HttpProbeService
         }
 
         if (!$request->hasHeader('User-Agent')) {
-            $request = $request->withHeader('User-Agent', $options->userAgent);
+            return $request->withHeader('User-Agent', $options->userAgent);
         }
 
         return $request;
