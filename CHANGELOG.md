@@ -11,6 +11,20 @@ Breaking major. See [UPGRADE.md](UPGRADE.md) for step-by-step migration.
   so breaking PRs for this release are gated, not blindly waved through.
 - `UPGRADE.md` added: per-step migration for every breaking change below.
 
+### Result-typed report slots (D1)
+
+- `rasuvaeff/result` is now a runtime dependency.
+- Every `DomainHealthReport` check slot is `Result<XxxCheck, CheckError>|null`:
+  `Ok` = payload DTO, `Err` = `CheckError`, `null` = check not configured. The
+  `errors` constructor parameter is removed; `getErrors()`/`hasErrors()` are
+  derived from the `Err` slots.
+- The constructor still accepts bare DTOs (auto-wrapped into `Ok`); reading
+  slots requires unwrapping.
+- Services returning `null` (SSL/WHOIS lookup failure) now produce `Err` slots
+  instead of invisible `null` slots.
+- `jsonSerialize()` keeps the shape; `Err` slots serialize as `CheckError`,
+  `errors` key is derived.
+
 ### Per-service interfaces (D2)
 
 - Every service implements a matching `*ServiceInterface`; `DomainMonitor`'s

@@ -19,6 +19,7 @@ use Rasuvaeff\DomainMonitor\SecurityHeadersCheck;
 use Rasuvaeff\DomainMonitor\SitemapCheck;
 use Rasuvaeff\DomainMonitor\SslCertificate;
 use Rasuvaeff\DomainMonitor\TldInfo;
+use Rasuvaeff\Result\Result;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -39,7 +40,9 @@ final class DomainHealthReportTest
         $report = new DomainHealthReport(host: 'example.com', probe: $probe);
 
         Assert::same($report->host, 'example.com');
-        Assert::same($report->probe, $probe);
+        Assert::notNull($report->probe);
+        Assert::true($report->probe->isOk());
+        Assert::same($report->probe->unwrap(), $probe);
     }
 
     #[DataProvider('probeStatusProvider')]
@@ -481,15 +484,15 @@ final class DomainHealthReportTest
 
     public function erroredChecksAppearAsUnknownResultsAndAreQueryable(): void
     {
-        $errors = [new CheckError(check: CheckName::Ssl, message: 'boom')];
+        $error = new CheckError(check: CheckName::Ssl, message: 'boom');
         $report = new DomainHealthReport(
             host: 'example.com',
             probe: new ProbeResult(status: 200, totalTime: 0.1),
-            errors: $errors,
+            ssl: Result::err(error: $error),
         );
 
         Assert::true($report->hasErrors());
-        Assert::same($report->getErrors(), $errors);
+        Assert::same($report->getErrors(), [$error]);
 
         $sslCheck = $report->getCheck(name: CheckName::Ssl);
 
@@ -508,7 +511,7 @@ final class DomainHealthReportTest
         $report = new DomainHealthReport(
             host: 'example.com',
             probe: new ProbeResult(status: 200, totalTime: 0.1),
-            errors: [new CheckError(check: CheckName::Ssl, message: 'boom')],
+            ssl: Result::err(error: new CheckError(check: CheckName::Ssl, message: 'boom')),
         );
 
         Assert::same($report->getStatus(), CheckStatus::OK);
@@ -520,17 +523,17 @@ final class DomainHealthReportTest
             host: 'example.com',
             probe: new ProbeResult(status: 200, totalTime: 0.1),
             dns: new DnsRecords(a: ['1.2.3.4']),
-            errors: [new CheckError(check: CheckName::Ssl, message: 'boom')],
+            ssl: Result::err(error: new CheckError(check: CheckName::Ssl, message: 'boom')),
         );
 
         $json = $report->jsonSerialize();
 
         Assert::same($json['host'], 'example.com');
         Assert::same($json['status'], 'ok');
-        Assert::same($json['probe'], $report->probe);
-        Assert::same($json['dns'], $report->dns);
-        Assert::same($json['ssl'], null);
-        Assert::same($json['errors'], $report->errors);
+        Assert::instanceOf($json['probe'], ProbeResult::class);
+        Assert::instanceOf($json['dns'], DnsRecords::class);
+        Assert::instanceOf($json['ssl'], CheckError::class);
+        Assert::same($json['errors'], $report->getErrors());
     }
 
     public function jsonEncodesToNestedStructure(): void
@@ -538,7 +541,7 @@ final class DomainHealthReportTest
         $report = new DomainHealthReport(
             host: 'example.com',
             probe: new ProbeResult(status: 200, totalTime: 0.1),
-            errors: [new CheckError(check: CheckName::Ssl, message: 'boom')],
+            ssl: Result::err(error: new CheckError(check: CheckName::Ssl, message: 'boom')),
         );
 
         $encoded = (string) \json_encode($report);

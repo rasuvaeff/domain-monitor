@@ -169,9 +169,24 @@ echo $report->getStatus()->value;
 
 ## Чтение отчёта
 
+Каждый слот проверки в отчёте — `Result<CheckXxx, CheckError>`
+(`rasuvaeff/result`): `Ok` несёт DTO-результат, `Err` — `CheckError`, `null` —
+проверка не настроена. Конструктор по-прежнему принимает «голые» DTO
+(оборачивает их в `Ok`):
+
+```php
+$sslSlot = $report->ssl; // Result<SslCertificate, CheckError>|null
+
+if ($sslSlot?->isOk()) {
+    $cert = $sslSlot->unwrap(); // SslCertificate: subjectCn, validUntil, daysUntilExpiry()...
+} elseif ($sslSlot !== null) {
+    $error = $sslSlot->error(); // CheckError { check, message }
+}
+```
+
 `getStatus()` — это агрегированный статус (худший среди всех проверок). Чтобы
-понять *почему*, обойдите результаты каждой проверки — каждый несёт `CheckName`,
-`CheckStatus` и человекочитаемый `reason`:
+понять *почему*, `getChecks()` вычисляет каждый слот в `list<CheckResult>` —
+каждый несёт `CheckName`, `CheckStatus` и человекочитательный `reason`:
 
 ```php
 foreach ($report->getChecks() as $result) {
@@ -187,8 +202,8 @@ $ssl = $report->getCheck(name: CheckName::Ssl); // ?CheckResult
 ### Ошибки против отключённых проверок
 
 Проверка, которая **не настроена** — это `null`. Проверка, которая **запускалась,
-но упала** — записывается отдельно: она появляется в `getChecks()` как `UNKNOWN`
-(никогда не завышает агрегат) и в `getErrors()`:
+но упала** — слот `Err`: она появляется в `getChecks()` как `UNKNOWN`
+(никогда не завышает агрегат) и в производных `getErrors()`/`hasErrors()`:
 
 ```php
 if ($report->hasErrors()) {

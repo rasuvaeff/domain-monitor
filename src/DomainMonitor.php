@@ -13,6 +13,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Rasuvaeff\CircuitBreaker\CircuitOpenException;
+use Rasuvaeff\Result\Result;
 use Rasuvaeff\Retry\Retry;
 use Rasuvaeff\Retry\RetryExhausted;
 use Throwable;
@@ -97,8 +98,8 @@ final readonly class DomainMonitor implements DomainMonitorInterface
 
             return new DomainHealthReport(
                 host: $normalizedHost,
+                probe: Result::err(error: new CheckError(check: CheckName::Probe, message: $exception->getMessage())),
                 thresholds: $options->thresholds,
-                errors: [new CheckError(check: CheckName::Probe, message: $exception->getMessage())],
             );
         }
     }
@@ -112,10 +113,9 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             userAgent: $options->userAgent,
         );
 
-        /** @var list<CheckError> $errors */
-        $errors = [];
         $retry = $options->retry;
 
+        /** @var Result<ProbeResult, CheckError>|null $probe */
         $probe = null;
         $response = null;
 
@@ -132,7 +132,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                         options: $probeOptions,
                     ),
                 );
-                $probe = $probeWithResponse->result;
+                $probe = Result::ok(value: $probeWithResponse->result);
                 $response = $probeWithResponse->response;
             } catch (ClientExceptionInterface|RetryExhausted $exception) {
                 $this->logger->warning(
@@ -144,13 +144,14 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     ],
                 );
 
-                $probe = new ProbeResult(
+                $probe = Result::ok(value: new ProbeResult(
                     status: 0,
                     totalTime: \microtime(as_float: true) - $startedAt,
-                );
+                ));
             }
         }
 
+        /** @var Result<SecurityHeadersCheck, CheckError>|null $securityHeaders */
         $securityHeaders = null;
         $securityHeadersService = $this->securityHeaders;
 
@@ -159,7 +160,6 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 name: CheckName::SecurityHeaders,
                 host: $host,
                 callback: fn() => $securityHeadersService->check(response: $response),
-                errors: $errors,
                 retry: $retry,
             );
         }
@@ -170,10 +170,10 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             response: $response,
             options: $options,
             probeOptions: $probeOptions,
-            errors: $errors,
             retry: $retry,
         );
 
+        /** @var Result<SslCertificate, CheckError>|null $ssl */
         $ssl = null;
         $sslService = $this->ssl;
 
@@ -185,11 +185,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     host: $host,
                     expectedOrg: $options->expectedOrg,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<TldInfo, CheckError>|null $whois */
         $whois = null;
         $whoisService = $this->whois;
 
@@ -198,11 +198,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 name: CheckName::Whois,
                 host: $host,
                 callback: fn() => $whoisService->check(host: $host),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<DnsRecords, CheckError>|null $dns */
         $dns = null;
         $dnsService = $this->dns;
 
@@ -211,11 +211,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 name: CheckName::Dns,
                 host: $host,
                 callback: fn() => $dnsService->check(host: $host),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<PortCheck, CheckError>|null $port */
         $port = null;
         $portService = $this->port;
 
@@ -228,11 +228,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     port: $options->port,
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<RobotsTxtCheck, CheckError>|null $robotsTxt */
         $robotsTxt = null;
         $robotsTxtService = $this->robotsTxt;
 
@@ -244,11 +244,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     baseUrl: $baseUrl,
                     options: $probeOptions,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<SitemapCheck, CheckError>|null $sitemap */
         $sitemap = null;
         $sitemapService = $this->sitemap;
 
@@ -260,11 +260,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     sitemapUrl: "{$baseUrl}/sitemap.xml",
                     options: $probeOptions,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<EmailSecurityCheck, CheckError>|null $emailSecurity */
         $emailSecurity = null;
         $emailSecurityService = $this->emailSecurity;
 
@@ -273,11 +273,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 name: CheckName::EmailSecurity,
                 host: $host,
                 callback: fn() => $emailSecurityService->check(host: $host),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<TlsCipherCheck, CheckError>|null $tlsCipher */
         $tlsCipher = null;
         $tlsCipherService = $this->tlsCipher;
 
@@ -290,11 +290,11 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     port: $options->port,
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<CookieSecurityCheck, CheckError>|null $cookieSecurity */
         $cookieSecurity = null;
         $cookieSecurityService = $this->cookieSecurity;
 
@@ -303,7 +303,6 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 name: CheckName::CookieSecurity,
                 host: $host,
                 callback: fn() => $cookieSecurityService->check(response: $response),
-                errors: $errors,
                 retry: $retry,
             );
         }
@@ -320,7 +319,6 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             robotsTxt: $robotsTxt,
             sitemap: $sitemap,
             thresholds: $options->thresholds,
-            errors: $errors,
             emailSecurity: $emailSecurity,
             tlsCipher: $tlsCipher,
             cookieSecurity: $cookieSecurity,
@@ -328,9 +326,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
     }
 
     /**
-     * @param list<CheckError> $errors
-     *
-     * @param-out list<CheckError> $errors
+     * @return Result<HttpContentCheck, CheckError>|null
      */
     private function resolveContent(
         string $host,
@@ -338,9 +334,8 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         ?ResponseInterface $response,
         DomainMonitorOptions $options,
         HttpProbeOptions $probeOptions,
-        array &$errors,
         ?Retry $retry = null,
-    ): ?HttpContentCheck {
+    ): ?Result {
         $contentService = $this->content;
 
         if ($contentService === null) {
@@ -357,7 +352,6 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     requiredText: $options->requiredText,
                     forbiddenText: $options->forbiddenText,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
@@ -372,25 +366,27 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 forbiddenText: $options->forbiddenText,
                 options: $probeOptions,
             ),
-            errors: $errors,
             retry: $retry,
         );
     }
 
     /**
-     * @template T
+     * @template T of object
      *
-     * @param Closure(): T $callback
-     * @param list<CheckError> $errors
+     * @param Closure(): ?T $callback
      *
-     * @param-out list<CheckError> $errors
-     *
-     * @return T|null
+     * @return Result<T, CheckError>
      */
-    private function runCheck(CheckName $name, string $host, Closure $callback, array &$errors, ?Retry $retry = null): mixed
+    private function runCheck(CheckName $name, string $host, Closure $callback, ?Retry $retry = null): Result
     {
         try {
-            return $this->attempt(retry: $retry, operation: $callback);
+            $result = $this->attempt(retry: $retry, operation: $callback);
+
+            if ($result === null) {
+                throw new \UnexpectedValueException(message: 'Service returned no result');
+            }
+
+            return Result::ok(value: $result);
         } catch (Throwable $exception) {
             $this->logger->warning(
                 message: \sprintf('%s check failed: %s', $name->value, $exception->getMessage()),
@@ -400,9 +396,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 ],
             );
 
-            $errors[] = new CheckError(check: $name, message: $exception->getMessage());
-
-            return null;
+            return Result::err(error: new CheckError(check: $name, message: $exception->getMessage()));
         }
     }
 

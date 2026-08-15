@@ -10,6 +10,7 @@ use Rasuvaeff\DomainMonitor\PortCheck;
 use Rasuvaeff\DomainMonitor\ProbeResult;
 use Rasuvaeff\DomainMonitor\ReportThresholds;
 use Rasuvaeff\DomainMonitor\SslCertificate;
+use Rasuvaeff\Result\Result;
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -30,8 +31,8 @@ $report = new DomainHealthReport(
     ),
     // Opt in to "SSL expiring soon = warning"; default() keeps 1.1.x behaviour.
     thresholds: ReportThresholds::strict(),
-    // A check that ran but threw is reported instead of silently dropped.
-    errors: [new CheckError(check: CheckName::Whois, message: 'WHOIS server timeout')],
+    // A check that ran but failed becomes an Err slot instead of being dropped.
+    whois: Result::err(error: new CheckError(check: CheckName::Whois, message: 'WHOIS server timeout')),
 );
 
 echo "Aggregate: {$report->getStatus()->value}\n";
