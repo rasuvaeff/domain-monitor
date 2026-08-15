@@ -23,8 +23,9 @@ use Psr\Http\Message\ResponseInterface;
  *
  * @api
  */
-final readonly class CookieSecurityService
+final readonly class CookieSecurityService implements CookieSecurityServiceInterface
 {
+    #[\Override]
     public function check(ResponseInterface $response): CookieSecurityCheck
     {
         $rawHeaders = $response->getHeader('Set-Cookie');

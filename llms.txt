@@ -14,7 +14,7 @@ composer require rasuvaeff/domain-monitor
 - `EmailSecurityService` uses `dns_get_record` for SPF / DMARC / DKIM (selectors opt-in via constructor) / CAA / MX. No HTTP client needed.
 - `TlsCipherService` performs a TLS handshake to read negotiated protocol + cipher; callable connector injection for tests. Does not validate certificate chain.
 - `CookieSecurityService` audits `Set-Cookie` headers on a PSR-7 response (Secure / HttpOnly / `__Host-` prefix rules); requires an HTTP probe response.
-- `DomainMonitor` orchestrator runs all configured services in one call, reuses the HTTP response for probe + security headers + content + cookie checks. Services are optional: `null` = check disabled.
+- `DomainMonitor` orchestrator runs all configured services in one call, reuses the HTTP response for probe + security headers + content + cookie checks. Services are optional: `null` = check disabled. Constructor accepts per-service interfaces (`HttpProbeServiceInterface`, …) — swap/mock a single check.
 - `DomainMonitor::create($client, $factory, $whois?)` wires every check with defaults; `DomainMonitorBuilder` composes granularly. `DomainMonitor implements DomainMonitorInterface`.
 - `DomainMonitor` catches exceptions per check; a failed check becomes a `CheckError` (see `getErrors()`/`hasErrors()`), reported as `UNKNOWN`, not silently dropped. Disabled check = `null`.
 - Read the report via `getChecks()` (`list<CheckResult>` with `reason`) / `getCheck(CheckName)`; `getStatus()` is the aggregate.

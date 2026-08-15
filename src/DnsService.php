@@ -9,7 +9,7 @@ use Closure;
 /**
  * @api
  */
-final readonly class DnsService
+final readonly class DnsService implements DnsServiceInterface
 {
     private const int RECORD_TYPES = \DNS_A | \DNS_AAAA | \DNS_MX | \DNS_NS | \DNS_TXT | \DNS_CNAME;
 
@@ -22,6 +22,7 @@ final readonly class DnsService
             : Closure::fromCallable(callback: $resolver);
     }
 
+    #[\Override]
     public function check(string $host): DnsRecords
     {
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);

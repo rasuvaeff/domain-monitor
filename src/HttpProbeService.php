@@ -14,7 +14,7 @@ use Psr\Log\NullLogger;
 /**
  * @api
  */
-final readonly class HttpProbeService
+final readonly class HttpProbeService implements HttpProbeServiceInterface
 {
     public function __construct(
         private ClientInterface $httpClient,
@@ -22,6 +22,7 @@ final readonly class HttpProbeService
         private LoggerInterface $logger = new NullLogger(),
     ) {}
 
+    #[\Override]
     public function check(string $url, ?HttpProbeOptions $options = null): ProbeResult
     {
         $normalizedUrl = (new HostNormalizer())->normalizeUrl(url: $url);
@@ -53,6 +54,7 @@ final readonly class HttpProbeService
         }
     }
 
+    #[\Override]
     public function probeWithResponse(string $url, ?HttpProbeOptions $options = null): HttpProbeWithResponse
     {
         $normalizedUrl = (new HostNormalizer())->normalizeUrl(url: $url);

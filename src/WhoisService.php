@@ -16,13 +16,14 @@ use Psr\Log\NullLogger;
 /**
  * @api
  */
-final readonly class WhoisService
+final readonly class WhoisService implements WhoisServiceInterface
 {
     public function __construct(
         private Whois $whois,
         private LoggerInterface $logger = new NullLogger(),
     ) {}
 
+    #[\Override]
     public function check(string $host): ?TldInfo
     {
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);

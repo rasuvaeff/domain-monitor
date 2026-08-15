@@ -14,7 +14,7 @@ use Psr\Log\NullLogger;
 /**
  * @api
  */
-final readonly class HttpContentCheckService
+final readonly class HttpContentCheckService implements HttpContentCheckServiceInterface
 {
     public function __construct(
         private ClientInterface $httpClient,
@@ -22,6 +22,7 @@ final readonly class HttpContentCheckService
         private LoggerInterface $logger = new NullLogger(),
     ) {}
 
+    #[\Override]
     public function check(
         string $url,
         int $expectedStatus = 200,
@@ -73,6 +74,7 @@ final readonly class HttpContentCheckService
         }
     }
 
+    #[\Override]
     public function checkFromResponse(
         ResponseInterface $response,
         int $expectedStatus = 200,

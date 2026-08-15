@@ -13,7 +13,7 @@ use Psr\Log\NullLogger;
 /**
  * @api
  */
-final readonly class SitemapService
+final readonly class SitemapService implements SitemapServiceInterface
 {
     public function __construct(
         private ClientInterface $httpClient,
@@ -21,6 +21,7 @@ final readonly class SitemapService
         private LoggerInterface $logger = new NullLogger(),
     ) {}
 
+    #[\Override]
     public function check(string $sitemapUrl, ?HttpProbeOptions $options = null): SitemapCheck
     {
         $normalizedUrl = (new HostNormalizer())->normalizeUrl(url: $sitemapUrl);

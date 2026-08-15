@@ -32,6 +32,7 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FlakyHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Rasuvaeff\DomainMonitor\Tests\Fixtures\StubDnsService;
 use Rasuvaeff\Duration\Duration;
 use Rasuvaeff\Retry\Retry;
 use Testo\Assert;
@@ -64,6 +65,15 @@ final class DomainMonitorTest
         $report = (new DomainMonitor())->check(host: 'https://EXAMPLE.com/path?query=1');
 
         Assert::same($report->host, 'example.com');
+    }
+
+    public function acceptsCustomServiceImplementationsViaInterfaces(): void
+    {
+        $monitor = new DomainMonitor(dns: new StubDnsService());
+
+        $report = $monitor->check(host: 'example.com');
+
+        Assert::same($report->dns?->a, ['9.9.9.9']);
     }
 
     public function throwsWhenSecurityHeadersConfiguredWithoutHttpProbe(): void

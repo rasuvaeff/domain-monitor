@@ -11,12 +11,13 @@ use Psr\Log\NullLogger;
 /**
  * @api
  */
-final readonly class SslCertificateService
+final readonly class SslCertificateService implements SslCertificateServiceInterface
 {
     public function __construct(
         private LoggerInterface $logger = new NullLogger(),
     ) {}
 
+    #[\Override]
     public function check(string $host, ?string $expectedOrg = null): ?SslCertificate
     {
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);

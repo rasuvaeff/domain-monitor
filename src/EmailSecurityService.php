@@ -19,7 +19,7 @@ use Closure;
  *
  * @api
  */
-final readonly class EmailSecurityService
+final readonly class EmailSecurityService implements EmailSecurityServiceInterface
 {
     private const int RECORD_TYPES = \DNS_TXT | \DNS_MX | \DNS_CAA;
 
@@ -37,6 +37,7 @@ final readonly class EmailSecurityService
             : Closure::fromCallable(callback: $resolver);
     }
 
+    #[\Override]
     public function check(string $host): EmailSecurityCheck
     {
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);

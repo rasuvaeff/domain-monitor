@@ -23,7 +23,7 @@ use Psr\Log\NullLogger;
  *
  * @api
  */
-final readonly class TlsCipherService
+final readonly class TlsCipherService implements TlsCipherServiceInterface
 {
     /**
      * Substrings matched (case-insensitive) against the negotiated cipher name.
@@ -59,6 +59,7 @@ final readonly class TlsCipherService
             : Closure::fromCallable(callback: $connector);
     }
 
+    #[\Override]
     public function check(string $host, int $port = 443, float $timeoutSeconds = 10.0): TlsCipherCheck
     {
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);
