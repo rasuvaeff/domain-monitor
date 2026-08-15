@@ -6,6 +6,7 @@ namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
+use Rasuvaeff\Retry\Retry;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
@@ -27,6 +28,7 @@ final class DomainMonitorOptionsTest
         Assert::same($options->expectedStatus, 200);
         Assert::null($options->requiredText);
         Assert::null($options->forbiddenText);
+        Assert::null($options->retry);
     }
 
     public function uppercasesHttpMethod(): void
@@ -47,6 +49,7 @@ final class DomainMonitorOptionsTest
             expectedStatus: 204,
             requiredText: 'healthy',
             forbiddenText: 'error',
+            retry: Retry::immediate(maxAttempts: 5),
         );
 
         Assert::same($options->port, 8443);
@@ -57,6 +60,7 @@ final class DomainMonitorOptionsTest
         Assert::same($options->expectedStatus, 204);
         Assert::same($options->requiredText, 'healthy');
         Assert::same($options->forbiddenText, 'error');
+        Assert::notNull($options->retry);
     }
 
     #[DataProvider('invalidPortProvider')]

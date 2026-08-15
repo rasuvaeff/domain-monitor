@@ -29,6 +29,7 @@ stateless-сервисами. Каждый чекер делает одну ве
 - `ext-openssl`, `ext-simplexml`
 - PSR-18 клиент и PSR-17 request factory для HTTP-проверок
 - `io-developer/php-whois` (тянет `ext-curl`, `ext-mbstring`)
+- `rasuvaeff/retry` (ставится автоматически; используется только при заданном `DomainMonitorOptions::retry`)
 - `ext-intl` опционально (только для нормализации IDN)
 - `ext-sockets` опционально (только для DNS-резолва)
 
@@ -221,6 +222,34 @@ $report = $monitor->check(
 ```
 
 `ReportThresholds::default()` точно воспроизводит поведение до версии 1.2.0.
+
+### Повторы
+
+Транзиентные сетевые сбои (DNS-ики, TCP-ресеты, таймауты соединения) — шум для
+инструмента мониторинга. Передайте политику
+[`rasuvaeff/retry`](https://github.com/rasuvaeff/retry), чтобы повторять каждую
+проверку — включая HTTP-пробу — с backoff и jitter:
+
+```php
+use Rasuvaeff\Retry\Retry;
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(
+        retry: Retry::exponential(maxAttempts: 3, baseMs: 200),
+    ),
+);
+```
+
+- `null` (по умолчанию) сохраняет legacy-поведение с одной попыткой.
+- Каждая проверка повторяется независимо; при исчерпании политики сообщение
+  `RetryExhausted` (с числом попыток и последней ошибкой) становится
+  `CheckError` этой проверки.
+- Исчерпание пробы трактуется как сбой пробы: `status: 0`, а зависимые от
+  ответа проверки (security headers, аудит cookie, content-from-response)
+  пропускаются.
+- Неповторяемые исключения пробрасываются как есть и попадают в `getErrors()`
+  ровно как раньше.
 
 ### Сериализация
 
@@ -485,7 +514,7 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `DomainMonitor` | Оркестратор: запускает все настроенные сервисы, переиспользует HTTP-ответ для пробы + заголовков безопасности + контента → `DomainHealthReport`; фабрика `create()` + реализует `DomainMonitorInterface` |
 | `DomainMonitorInterface` | Контракт для `DomainMonitor` — мокать/декорировать |
 | `DomainMonitorBuilder` | Fluent-сборка оркестратора с гранулярным контролем (`withHttp`, `withWhois`, `withoutPort`, …) |
-| `DomainMonitorOptions` | VO для оркестратора: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds |
+| `DomainMonitorOptions` | VO для оркестратора: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds, retry |
 | `ReportThresholds` | VO: окно предупреждения об истечении SSL (`sslWarnDays`) + окно предупреждения WHOIS (`whoisWarnDays`); `default()` / `strict()` |
 | `HostNormalizer` | Нормализация хостов/URL-ов (lowercase, strip scheme/port/path, опционально IDN) |
 | `HttpProbeService` | PSR-18 GET/HEAD-проба с замером времени → `ProbeResult`; `probeWithResponse()` для переиспользования ответа |

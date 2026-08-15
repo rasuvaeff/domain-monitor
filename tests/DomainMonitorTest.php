@@ -23,8 +23,10 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequest;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
+use Rasuvaeff\DomainMonitor\Tests\Fixtures\FlakyHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Rasuvaeff\Retry\Retry;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
@@ -262,6 +264,134 @@ final class DomainMonitorTest
         $report = $monitor->check(host: 'example.com');
 
         Assert::instanceOf($report, DomainHealthReport::class);
+    }
+
+    public function retryRetriesTransientCheckFailureUntilSuccess(): void
+    {
+        $connectorCalls = 0;
+        $connector = static function () use (&$connectorCalls): array {
+            $connectorCalls++;
+
+            if ($connectorCalls < 3) {
+                throw new \RuntimeException(message: 'transient failure');
+            }
+
+            return ['success' => true, 'connectTime' => 0.01, 'error' => null];
+        };
+
+        $monitor = new DomainMonitor(
+            port: new PortService(connector: $connector),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(retry: Retry::immediate(maxAttempts: 3)),
+        );
+
+        Assert::same($connectorCalls, 3);
+        Assert::notNull($report->port);
+        Assert::same($report->port->status, CheckStatus::OK);
+        Assert::false($report->hasErrors());
+    }
+
+    public function retryExhaustionIsRecordedAsCheckError(): void
+    {
+        $connectorCalls = 0;
+        $connector = static function () use (&$connectorCalls): array {
+            $connectorCalls++;
+
+            throw new \RuntimeException(message: 'port closed');
+        };
+
+        $monitor = new DomainMonitor(
+            port: new PortService(connector: $connector),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(retry: Retry::immediate(maxAttempts: 2)),
+        );
+
+        Assert::same($connectorCalls, 2);
+        Assert::null($report->port);
+        Assert::true($report->hasErrors());
+
+        $errors = $report->getErrors();
+
+        Assert::count($errors, 1);
+        Assert::same($errors[0]->check, CheckName::Port);
+        Assert::string($errors[0]->message)->contains('Retry exhausted after 2 attempt(s)');
+        Assert::string($errors[0]->message)->contains('port closed');
+    }
+
+    public function withoutRetryEachCheckRunsExactlyOnce(): void
+    {
+        $connectorCalls = 0;
+        $connector = static function () use (&$connectorCalls): array {
+            $connectorCalls++;
+
+            throw new \RuntimeException(message: 'port closed');
+        };
+
+        $monitor = new DomainMonitor(
+            port: new PortService(connector: $connector),
+        );
+
+        $report = $monitor->check(host: 'example.com');
+
+        Assert::same($connectorCalls, 1);
+        Assert::true($report->hasErrors());
+    }
+
+    public function retryWrapsHttpProbe(): void
+    {
+        $client = new FlakyHttpClient(
+            failures: 1,
+            response: new FakeResponse(statusCode: 200),
+        );
+
+        $monitor = new DomainMonitor(
+            httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(retry: Retry::immediate(maxAttempts: 3)),
+        );
+
+        Assert::same($client->calls, 2);
+        Assert::notNull($report->probe);
+        Assert::same($report->probe->status, 200);
+        Assert::false($report->hasErrors());
+    }
+
+    public function probeRetryExhaustionSetsStatusZeroAndLogsWarning(): void
+    {
+        $client = new FlakyHttpClient(
+            failures: 5,
+            response: new FakeResponse(statusCode: 200),
+        );
+        $logger = new RecordingLogger();
+
+        $monitor = new DomainMonitor(
+            logger: $logger,
+            httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(retry: Retry::immediate(maxAttempts: 2)),
+        );
+
+        Assert::same($client->calls, 2);
+        Assert::notNull($report->probe);
+        Assert::same($report->probe->status, 0);
+        Assert::null($report->securityHeaders);
+        Assert::false($report->hasErrors());
+
+        Assert::count($logger->records, 1);
+        Assert::same($logger->records[0]['message'], 'HTTP probe failed');
+        Assert::string($logger->records[0]['context']['error'])->contains('Retry exhausted after 2 attempt(s)');
     }
 
     public function failedCheckIsRecordedAsCheckError(): void

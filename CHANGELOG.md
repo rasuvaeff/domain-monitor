@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Retries (roadmap B1)
+
+- `DomainMonitorOptions` accepts an optional `retry: ?Rasuvaeff\Retry\Retry`
+  policy (`rasuvaeff/retry` is now a runtime dependency). Every check —
+  including the HTTP probe — is wrapped in the policy when configured.
+- `null` (default) keeps the legacy single-attempt behaviour.
+- On exhaustion the `RetryExhausted` message (attempt count + last error) is
+  recorded as that check's `CheckError`; probe exhaustion is treated like a
+  probe failure (`status: 0`, response-dependent checks skipped).
+- Non-retryable exceptions are rethrown as-is and land in `getErrors()` as before.
+
 ## 1.4.0 — 2026-07-29
 
 ### EmailSecurityService (SPF / DKIM / DMARC / CAA / MX)

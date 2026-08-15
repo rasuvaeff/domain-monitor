@@ -12,6 +12,8 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Rasuvaeff\Retry\Retry;
+use Rasuvaeff\Retry\RetryExhausted;
 use Throwable;
 
 /**
@@ -81,6 +83,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
 
         /** @var list<CheckError> $errors */
         $errors = [];
+        $retry = $options->retry;
 
         $probe = null;
         $response = null;
@@ -91,13 +94,16 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             $startedAt = \microtime(as_float: true);
 
             try {
-                $probeWithResponse = $httpProbe->probeWithResponse(
-                    url: $baseUrl,
-                    options: $probeOptions,
+                $probeWithResponse = $this->attempt(
+                    retry: $retry,
+                    operation: static fn(): HttpProbeWithResponse => $httpProbe->probeWithResponse(
+                        url: $baseUrl,
+                        options: $probeOptions,
+                    ),
                 );
                 $probe = $probeWithResponse->result;
                 $response = $probeWithResponse->response;
-            } catch (ClientExceptionInterface $exception) {
+            } catch (ClientExceptionInterface|RetryExhausted $exception) {
                 $this->logger->warning(
                     message: 'HTTP probe failed',
                     context: [
@@ -123,6 +129,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 host: $normalizedHost,
                 callback: fn() => $securityHeadersService->check(response: $response),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -133,6 +140,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             options: $options,
             probeOptions: $probeOptions,
             errors: $errors,
+            retry: $retry,
         );
 
         $ssl = null;
@@ -147,6 +155,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     expectedOrg: $options->expectedOrg,
                 ),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -159,6 +168,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 host: $normalizedHost,
                 callback: fn() => $whoisService->check(host: $normalizedHost),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -171,6 +181,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 host: $normalizedHost,
                 callback: fn() => $dnsService->check(host: $normalizedHost),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -187,6 +198,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -202,6 +214,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     options: $probeOptions,
                 ),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -217,6 +230,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     options: $probeOptions,
                 ),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -229,6 +243,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 host: $normalizedHost,
                 callback: fn() => $emailSecurityService->check(host: $normalizedHost),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -245,6 +260,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -257,6 +273,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 host: $normalizedHost,
                 callback: fn() => $cookieSecurityService->check(response: $response),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -291,6 +308,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         DomainMonitorOptions $options,
         HttpProbeOptions $probeOptions,
         array &$errors,
+        ?Retry $retry = null,
     ): ?HttpContentCheck {
         $contentService = $this->content;
 
@@ -309,6 +327,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     forbiddenText: $options->forbiddenText,
                 ),
                 errors: $errors,
+                retry: $retry,
             );
         }
 
@@ -323,6 +342,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 options: $probeOptions,
             ),
             errors: $errors,
+            retry: $retry,
         );
     }
 
@@ -336,10 +356,10 @@ final readonly class DomainMonitor implements DomainMonitorInterface
      *
      * @return T|null
      */
-    private function runCheck(CheckName $name, string $host, Closure $callback, array &$errors): mixed
+    private function runCheck(CheckName $name, string $host, Closure $callback, array &$errors, ?Retry $retry = null): mixed
     {
         try {
-            return $callback();
+            return $this->attempt(retry: $retry, operation: $callback);
         } catch (Throwable $exception) {
             $this->logger->warning(
                 message: \sprintf('%s check failed: %s', $name->value, $exception->getMessage()),
@@ -353,5 +373,17 @@ final readonly class DomainMonitor implements DomainMonitorInterface
 
             return null;
         }
+    }
+
+    /**
+     * @template T
+     *
+     * @param Closure(): T $operation
+     *
+     * @return T
+     */
+    private function attempt(?Retry $retry, Closure $operation): mixed
+    {
+        return $retry !== null ? $retry->run($operation) : $operation();
     }
 }

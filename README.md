@@ -23,6 +23,7 @@ A modular domain monitoring toolkit for PHP 8.3+. Zero-framework, PSR-compatible
 - `ext-openssl`, `ext-simplexml`
 - A PSR-18 client and PSR-17 request factory for HTTP-based checks
 - `io-developer/php-whois` (pulls `ext-curl`, `ext-mbstring`)
+- `rasuvaeff/retry` (installed automatically; used only when `DomainMonitorOptions::retry` is set)
 - `ext-intl` is optional (IDN normalization only)
 - `ext-sockets` is optional (DNS resolution only)
 
@@ -204,6 +205,26 @@ $report = $monitor->check(
 ```
 
 `ReportThresholds::default()` reproduces pre-1.2.0 behaviour exactly.
+
+### Retries
+
+Transient network failures (DNS hiccups, TCP resets, connection timeouts) are noise for a monitoring tool. Pass a [`rasuvaeff/retry`](https://github.com/rasuvaeff/retry) policy to retry every check — including the HTTP probe — with backoff and jitter:
+
+```php
+use Rasuvaeff\Retry\Retry;
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(
+        retry: Retry::exponential(maxAttempts: 3, baseMs: 200),
+    ),
+);
+```
+
+- `null` (default) keeps the legacy single-attempt behaviour.
+- Each check retries independently; when the policy is exhausted, the `RetryExhausted` message (carrying the attempt count and the last error) becomes that check's `CheckError`.
+- Probe exhaustion is treated like a probe failure: `status: 0`, and response-dependent checks (security headers, cookie audit, content-from-response) are skipped.
+- Non-retryable exceptions are rethrown as-is and land in `getErrors()` exactly as before.
 
 ### Serialization
 
@@ -451,7 +472,7 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `DomainMonitor` | Orchestrator: runs all configured services, reuses HTTP response for probe + security headers + content → `DomainHealthReport`; `create()` factory + implements `DomainMonitorInterface` |
 | `DomainMonitorInterface` | Contract for `DomainMonitor` — mock/decorate it |
 | `DomainMonitorBuilder` | Fluent, granular composition of the orchestrator (`withHttp`, `withWhois`, `withoutPort`, …) |
-| `DomainMonitorOptions` | VO for orchestrator: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds |
+| `DomainMonitorOptions` | VO for orchestrator: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds, retry |
 | `ReportThresholds` | VO: SSL expiry-warning window (`sslWarnDays`) + WHOIS warning window (`whoisWarnDays`); `default()` / `strict()` |
 | `HostNormalizer` | Normalize hosts/URLs (lowercase, strip scheme/port/path, optional IDN) |
 | `HttpProbeService` | PSR-18 GET/HEAD probe with measured time → `ProbeResult`; `probeWithResponse()` for response reuse |
