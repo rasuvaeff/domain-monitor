@@ -204,9 +204,9 @@ if ($report->hasErrors()) {
 
 ### Пороги
 
-По умолчанию SSL становится `CRITICAL` только после истечения срока, а WHOIS
-предупреждает за 30 дней. Включите «скорого истечения SSL = warning» (и
-настройте окно WHOIS) через `ReportThresholds`:
+По умолчанию SSL предупреждает (`WARNING`) за 30 дней до истечения и становится
+`CRITICAL` после; WHOIS предупреждает за 30 дней. Настройте (или отключите)
+окна через `ReportThresholds`:
 
 ```php
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
@@ -216,12 +216,14 @@ $report = $monitor->check(
     host: 'example.com',
     options: new DomainMonitorOptions(
         thresholds: ReportThresholds::strict(), // SSL warns 14 days before expiry
-        // or: new ReportThresholds(sslWarnDays: 30, whoisWarnDays: 45)
+        // or: new ReportThresholds(sslWarnDays: 60, whoisWarnDays: 45)
+        // or: ReportThresholds::legacy() — поведение 1.x, без окна предупреждения SSL
     ),
 );
 ```
 
-`ReportThresholds::default()` точно воспроизводит поведение до версии 1.2.0.
+`ReportThresholds::legacy()` точно воспроизводит поведение до версии 2.0
+(`sslWarnDays: null`).
 
 ### Повторы
 

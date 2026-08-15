@@ -189,7 +189,7 @@ Treat `getStatus() === CheckStatus::OK` together with `hasErrors() === true` as 
 
 ### Thresholds
 
-By default SSL is `CRITICAL` only once expired, and WHOIS warns within 30 days. Opt in to "SSL expiring soon = warning" (and tune the WHOIS window) with `ReportThresholds`:
+By default SSL warns `WARNING` 30 days before expiry and CRITICAL once expired; WHOIS warns within 30 days. Tune (or disable) the windows with `ReportThresholds`:
 
 ```php
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
@@ -199,12 +199,13 @@ $report = $monitor->check(
     host: 'example.com',
     options: new DomainMonitorOptions(
         thresholds: ReportThresholds::strict(), // SSL warns 14 days before expiry
-        // or: new ReportThresholds(sslWarnDays: 30, whoisWarnDays: 45)
+        // or: new ReportThresholds(sslWarnDays: 60, whoisWarnDays: 45)
+        // or: ReportThresholds::legacy() — 1.x behaviour, no SSL warning window
     ),
 );
 ```
 
-`ReportThresholds::default()` reproduces pre-1.2.0 behaviour exactly.
+`ReportThresholds::legacy()` reproduces pre-2.0 behaviour exactly (`sslWarnDays: null`).
 
 ### Retries
 
