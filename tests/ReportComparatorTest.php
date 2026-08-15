@@ -20,6 +20,7 @@ use Rasuvaeff\PropertyTesting\ArbitraryInterface;
 use Rasuvaeff\PropertyTesting\Classify;
 use Rasuvaeff\PropertyTesting\Gen;
 use Rasuvaeff\PropertyTesting\Property;
+use Rasuvaeff\Result\Result;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Lifecycle\BeforeTest;
@@ -119,7 +120,7 @@ final class ReportComparatorTest
     public function treatsErroredCheckAsUnknown(): void
     {
         $previous = $this->reportWithProbe(status: 200);
-        $current = new DomainHealthReport(host: 'example.com', errors: [new CheckError(check: CheckName::Probe, message: 'boom')]);
+        $current = new DomainHealthReport(host: 'example.com', probe: Result::err(error: new CheckError(check: CheckName::Probe, message: 'boom')));
 
         $transitions = $this->comparator->diff(previous: $previous, current: $current);
 

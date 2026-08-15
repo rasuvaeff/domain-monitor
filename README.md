@@ -159,7 +159,19 @@ echo $report->getStatus()->value;
 
 ## Reading the report
 
-`getStatus()` is the aggregate (worst of all checks). For the *why*, iterate per-check results — each carries a `CheckName`, a `CheckStatus`, and a human-readable `reason`:
+Every check slot on the report is a `Result<CheckXxx, CheckError>` (`rasuvaeff/result`): `Ok` carries the payload DTO, `Err` carries the `CheckError`, `null` means the check was not configured. The constructor still accepts bare DTOs (wrapped into `Ok` for you):
+
+```php
+$sslSlot = $report->ssl; // Result<SslCertificate, CheckError>|null
+
+if ($sslSlot?->isOk()) {
+    $cert = $sslSlot->unwrap(); // SslCertificate: subjectCn, validUntil, daysUntilExpiry()...
+} elseif ($sslSlot !== null) {
+    $error = $sslSlot->error(); // CheckError { check, message }
+}
+```
+
+`getStatus()` is the aggregate (worst of all checks). For the *why*, `getChecks()` evaluates every slot into a `list<CheckResult>` — each with a `CheckName`, a `CheckStatus`, and a human-readable `reason`:
 
 ```php
 foreach ($report->getChecks() as $result) {
@@ -174,7 +186,7 @@ $ssl = $report->getCheck(name: CheckName::Ssl); // ?CheckResult
 
 ### Errors vs disabled checks
 
-A check that was **not configured** is `null`. A check that **ran but threw** is recorded separately — it appears in `getChecks()` as `UNKNOWN` (never inflating the aggregate) and in `getErrors()`:
+A check that was **not configured** is `null`. A check that **ran but failed** is an `Err` slot — it appears in `getChecks()` as `UNKNOWN` (never inflating the aggregate) and in the derived `getErrors()`/`hasErrors()`.
 
 ```php
 if ($report->hasErrors()) {

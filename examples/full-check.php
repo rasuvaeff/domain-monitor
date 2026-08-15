@@ -52,46 +52,46 @@ printf(
 );
 
 if ($report->probe !== null) {
-    printf("Probe: HTTP %d (%.3fs)\n", $report->probe->status, $report->probe->totalTime);
+    printf("Probe: HTTP %d (%.3fs)\n", $report->probe->unwrap()->status, $report->probe->unwrap()->totalTime);
 }
 
 if ($report->ssl !== null) {
     printf(
         "SSL: CN=%s, expires in %d days\n",
-        $report->ssl->subjectCn,
-        $report->ssl->daysUntilExpiry(),
+        $report->ssl->unwrap()->subjectCn,
+        $report->ssl->unwrap()->daysUntilExpiry(),
     );
 }
 
 if ($report->whois !== null) {
-    $days = $report->whois->daysUntilExpiry();
-    printf("WHOIS: registrar=%s, expires in %s days\n", $report->whois->registrar ?? 'unknown', $days ?? '?');
+    $days = $report->whois->unwrap()->daysUntilExpiry();
+    printf("WHOIS: registrar=%s, expires in %s days\n", $report->whois->unwrap()->registrar ?? 'unknown', $days ?? '?');
 }
 
 if ($report->dns !== null) {
-    printf("DNS: A=%d, MX=%d, NS=%d\n", count($report->dns->a), count($report->dns->mx), count($report->dns->ns));
+    printf("DNS: A=%d, MX=%d, NS=%d\n", count($report->dns->unwrap()->a), count($report->dns->unwrap()->mx), count($report->dns->unwrap()->ns));
 }
 
 if ($report->port !== null) {
-    printf("Port %d: %s (%.3fs)\n", $report->port->port, $report->port->status->value, $report->port->connectTime);
+    printf("Port %d: %s (%.3fs)\n", $report->port->unwrap()->port, $report->port->unwrap()->status->value, $report->port->unwrap()->connectTime);
 }
 
 if ($report->securityHeaders !== null) {
     printf(
         "Security headers: %d/%d present\n",
-        count($report->securityHeaders->presentHeaders),
-        count($report->securityHeaders->presentHeaders) + count($report->securityHeaders->missingHeaders),
+        count($report->securityHeaders->unwrap()->presentHeaders),
+        count($report->securityHeaders->unwrap()->presentHeaders) + count($report->securityHeaders->unwrap()->missingHeaders),
     );
 }
 
 if ($report->robotsTxt !== null) {
-    printf("robots.txt: exists=%s, sitemaps=%d\n", $report->robotsTxt->exists ? 'yes' : 'no', count($report->robotsTxt->sitemaps));
+    printf("robots.txt: exists=%s, sitemaps=%d\n", $report->robotsTxt->unwrap()->exists ? 'yes' : 'no', count($report->robotsTxt->unwrap()->sitemaps));
 }
 
 if ($report->sitemap !== null) {
-    printf("sitemap.xml: exists=%s, urls=%d\n", $report->sitemap->exists ? 'yes' : 'no', $report->sitemap->urlCount);
+    printf("sitemap.xml: exists=%s, urls=%d\n", $report->sitemap->unwrap()->exists ? 'yes' : 'no', $report->sitemap->unwrap()->urlCount);
 }
 
 if ($report->content !== null) {
-    printf("Content: %s\n", $report->content->status->value);
+    printf("Content: %s\n", $report->content->unwrap()->status->value);
 }

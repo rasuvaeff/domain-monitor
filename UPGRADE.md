@@ -57,10 +57,37 @@ Passing the shipped concrete services keeps working — they implement the
 interfaces. Code that type-hinted the concrete classes in its own signatures
 against `DomainMonitor`'s properties should switch to the interfaces.
 
+## Result-typed report slots (D1)
+
+Every check slot on `DomainHealthReport` is now a
+`Result<XxxCheck, CheckError>|null` (`rasuvaeff/result` is a new runtime
+dependency): `Ok` carries the payload DTO, `Err` carries the `CheckError` that
+replaced it, `null` still means the check was not configured. The separate
+`errors` constructor parameter is gone — errors live in the slots, and
+`getErrors()`/`hasErrors()` are derived from them.
+
+```php
+// 1.x: slot was the DTO (or null on failure — indistinguishable from disabled)
+$cert = $report->ssl;              // ?SslCertificate
+
+// 2.0: slot is a Result
+$slot = $report->ssl;              // Result<SslCertificate, CheckError>|null
+$cert = $slot?->unwrap();          // SslCertificate when Ok
+$error = $slot?->error();          // CheckError when Err
+```
+
+- Constructing a report with bare DTOs keeps working (auto-wrapped into `Ok`).
+  Only **reading** slots changed: unwrap first.
+- `jsonSerialize()` keeps the same top-level shape; `Err` slots serialize as
+  their `CheckError`, the `errors` key is derived.
+- A service returning `null` (SSL/WHOIS lookup failure) now produces an `Err`
+  slot ("Service returned no result") instead of an invisible `null` slot.
+- `getChecks()` ordering: failed checks appear in their slot position instead
+  of being appended after successful ones.
+
 ## TODO: sections
 
 The following sections are added by their respective pull requests into the
 `2.0` branch:
 
-- [ ] Result-typed report slots (D1)
 - [ ] Time budget and batch API (E2/E3)

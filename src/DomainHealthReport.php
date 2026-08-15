@@ -5,32 +5,92 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor;
 
 use JsonSerializable;
+use Rasuvaeff\Result\Result;
 
 /**
  * @api
  */
 final readonly class DomainHealthReport implements JsonSerializable
 {
+    /** @var Result<ProbeResult, CheckError>|null */
+    public ?Result $probe;
+
+    /** @var Result<SslCertificate, CheckError>|null */
+    public ?Result $ssl;
+
+    /** @var Result<TldInfo, CheckError>|null */
+    public ?Result $whois;
+
+    /** @var Result<DnsRecords, CheckError>|null */
+    public ?Result $dns;
+
+    /** @var Result<HttpContentCheck, CheckError>|null */
+    public ?Result $content;
+
+    /** @var Result<PortCheck, CheckError>|null */
+    public ?Result $port;
+
+    /** @var Result<SecurityHeadersCheck, CheckError>|null */
+    public ?Result $securityHeaders;
+
+    /** @var Result<RobotsTxtCheck, CheckError>|null */
+    public ?Result $robotsTxt;
+
+    /** @var Result<SitemapCheck, CheckError>|null */
+    public ?Result $sitemap;
+
+    /** @var Result<EmailSecurityCheck, CheckError>|null */
+    public ?Result $emailSecurity;
+
+    /** @var Result<TlsCipherCheck, CheckError>|null */
+    public ?Result $tlsCipher;
+
+    /** @var Result<CookieSecurityCheck, CheckError>|null */
+    public ?Result $cookieSecurity;
+
     /**
-     * @param list<CheckError> $errors
+     * @param ProbeResult|Result<ProbeResult, CheckError>|null $probe
+     * @param SslCertificate|Result<SslCertificate, CheckError>|null $ssl
+     * @param TldInfo|Result<TldInfo, CheckError>|null $whois
+     * @param DnsRecords|Result<DnsRecords, CheckError>|null $dns
+     * @param HttpContentCheck|Result<HttpContentCheck, CheckError>|null $content
+     * @param PortCheck|Result<PortCheck, CheckError>|null $port
+     * @param SecurityHeadersCheck|Result<SecurityHeadersCheck, CheckError>|null $securityHeaders
+     * @param RobotsTxtCheck|Result<RobotsTxtCheck, CheckError>|null $robotsTxt
+     * @param SitemapCheck|Result<SitemapCheck, CheckError>|null $sitemap
+     * @param EmailSecurityCheck|Result<EmailSecurityCheck, CheckError>|null $emailSecurity
+     * @param TlsCipherCheck|Result<TlsCipherCheck, CheckError>|null $tlsCipher
+     * @param CookieSecurityCheck|Result<CookieSecurityCheck, CheckError>|null $cookieSecurity
      */
     public function __construct(
         public string $host,
-        public ?ProbeResult $probe = null,
-        public ?SslCertificate $ssl = null,
-        public ?TldInfo $whois = null,
-        public ?DnsRecords $dns = null,
-        public ?HttpContentCheck $content = null,
-        public ?PortCheck $port = null,
-        public ?SecurityHeadersCheck $securityHeaders = null,
-        public ?RobotsTxtCheck $robotsTxt = null,
-        public ?SitemapCheck $sitemap = null,
+        ProbeResult|Result|null $probe = null,
+        SslCertificate|Result|null $ssl = null,
+        TldInfo|Result|null $whois = null,
+        DnsRecords|Result|null $dns = null,
+        HttpContentCheck|Result|null $content = null,
+        PortCheck|Result|null $port = null,
+        SecurityHeadersCheck|Result|null $securityHeaders = null,
+        RobotsTxtCheck|Result|null $robotsTxt = null,
+        SitemapCheck|Result|null $sitemap = null,
         public ?ReportThresholds $thresholds = null,
-        public array $errors = [],
-        public ?EmailSecurityCheck $emailSecurity = null,
-        public ?TlsCipherCheck $tlsCipher = null,
-        public ?CookieSecurityCheck $cookieSecurity = null,
-    ) {}
+        EmailSecurityCheck|Result|null $emailSecurity = null,
+        TlsCipherCheck|Result|null $tlsCipher = null,
+        CookieSecurityCheck|Result|null $cookieSecurity = null,
+    ) {
+        $this->probe = $probe === null ? null : ($probe instanceof Result ? $probe : Result::ok(value: $probe));
+        $this->ssl = $ssl === null ? null : ($ssl instanceof Result ? $ssl : Result::ok(value: $ssl));
+        $this->whois = $whois === null ? null : ($whois instanceof Result ? $whois : Result::ok(value: $whois));
+        $this->dns = $dns === null ? null : ($dns instanceof Result ? $dns : Result::ok(value: $dns));
+        $this->content = $content === null ? null : ($content instanceof Result ? $content : Result::ok(value: $content));
+        $this->port = $port === null ? null : ($port instanceof Result ? $port : Result::ok(value: $port));
+        $this->securityHeaders = $securityHeaders === null ? null : ($securityHeaders instanceof Result ? $securityHeaders : Result::ok(value: $securityHeaders));
+        $this->robotsTxt = $robotsTxt === null ? null : ($robotsTxt instanceof Result ? $robotsTxt : Result::ok(value: $robotsTxt));
+        $this->sitemap = $sitemap === null ? null : ($sitemap instanceof Result ? $sitemap : Result::ok(value: $sitemap));
+        $this->emailSecurity = $emailSecurity === null ? null : ($emailSecurity instanceof Result ? $emailSecurity : Result::ok(value: $emailSecurity));
+        $this->tlsCipher = $tlsCipher === null ? null : ($tlsCipher instanceof Result ? $tlsCipher : Result::ok(value: $tlsCipher));
+        $this->cookieSecurity = $cookieSecurity === null ? null : ($cookieSecurity instanceof Result ? $cookieSecurity : Result::ok(value: $cookieSecurity));
+    }
 
     /**
      * @return list<CheckResult>
@@ -41,59 +101,75 @@ final readonly class DomainHealthReport implements JsonSerializable
         $results = [];
 
         if ($this->probe !== null) {
-            $results[] = $this->probeCheck(probe: $this->probe);
+            $results[] = $this->probe->isOk()
+                ? $this->probeCheck(probe: $this->probe->unwrap())
+                : self::failed(check: CheckName::Probe, error: $this->probe->error());
         }
 
         if ($this->ssl !== null) {
-            $results[] = $this->sslCheck(certificate: $this->ssl, thresholds: $thresholds);
+            $results[] = $this->ssl->isOk()
+                ? $this->sslCheck(certificate: $this->ssl->unwrap(), thresholds: $thresholds)
+                : self::failed(check: CheckName::Ssl, error: $this->ssl->error());
         }
 
         if ($this->whois !== null) {
-            $results[] = $this->whoisCheck(tldInfo: $this->whois, thresholds: $thresholds);
+            $results[] = $this->whois->isOk()
+                ? $this->whoisCheck(tldInfo: $this->whois->unwrap(), thresholds: $thresholds)
+                : self::failed(check: CheckName::Whois, error: $this->whois->error());
         }
 
         if ($this->dns !== null) {
-            $results[] = $this->dnsCheck(dnsRecords: $this->dns);
+            $results[] = $this->dns->isOk()
+                ? $this->dnsCheck(dnsRecords: $this->dns->unwrap())
+                : self::failed(check: CheckName::Dns, error: $this->dns->error());
         }
 
         if ($this->content !== null) {
-            $results[] = $this->contentCheck(content: $this->content);
+            $results[] = $this->content->isOk()
+                ? $this->contentCheck(content: $this->content->unwrap())
+                : self::failed(check: CheckName::Content, error: $this->content->error());
         }
 
         if ($this->port !== null) {
-            $results[] = $this->portCheck(portCheck: $this->port);
+            $results[] = $this->port->isOk()
+                ? $this->portCheck(portCheck: $this->port->unwrap())
+                : self::failed(check: CheckName::Port, error: $this->port->error());
         }
 
         if ($this->securityHeaders !== null) {
-            $results[] = $this->securityHeadersCheck(headers: $this->securityHeaders);
+            $results[] = $this->securityHeaders->isOk()
+                ? $this->securityHeadersCheck(headers: $this->securityHeaders->unwrap())
+                : self::failed(check: CheckName::SecurityHeaders, error: $this->securityHeaders->error());
         }
 
         if ($this->robotsTxt !== null) {
-            $results[] = $this->robotsTxtCheck(robots: $this->robotsTxt);
+            $results[] = $this->robotsTxt->isOk()
+                ? $this->robotsTxtCheck(robots: $this->robotsTxt->unwrap())
+                : self::failed(check: CheckName::RobotsTxt, error: $this->robotsTxt->error());
         }
 
         if ($this->sitemap !== null) {
-            $results[] = $this->sitemapCheck(sitemap: $this->sitemap);
+            $results[] = $this->sitemap->isOk()
+                ? $this->sitemapCheck(sitemap: $this->sitemap->unwrap())
+                : self::failed(check: CheckName::Sitemap, error: $this->sitemap->error());
         }
 
         if ($this->emailSecurity !== null) {
-            $results[] = $this->emailSecurityCheck(check: $this->emailSecurity);
+            $results[] = $this->emailSecurity->isOk()
+                ? $this->emailSecurityCheck(check: $this->emailSecurity->unwrap())
+                : self::failed(check: CheckName::EmailSecurity, error: $this->emailSecurity->error());
         }
 
         if ($this->tlsCipher !== null) {
-            $results[] = $this->tlsCipherCheck(check: $this->tlsCipher);
+            $results[] = $this->tlsCipher->isOk()
+                ? $this->tlsCipherCheck(check: $this->tlsCipher->unwrap())
+                : self::failed(check: CheckName::TlsCipher, error: $this->tlsCipher->error());
         }
 
         if ($this->cookieSecurity !== null) {
-            $results[] = $this->cookieSecurityCheck(check: $this->cookieSecurity);
-        }
-
-        foreach ($this->errors as $error) {
-            $results[] = new CheckResult(
-                check: $error->check,
-                status: CheckStatus::UNKNOWN,
-                reason: \sprintf('Check failed: %s', $error->message),
-            );
+            $results[] = $this->cookieSecurity->isOk()
+                ? $this->cookieSecurityCheck(check: $this->cookieSecurity->unwrap())
+                : self::failed(check: CheckName::CookieSecurity, error: $this->cookieSecurity->error());
         }
 
         return $results;
@@ -128,12 +204,39 @@ final readonly class DomainHealthReport implements JsonSerializable
      */
     public function getErrors(): array
     {
-        return $this->errors;
+        $errors = [];
+
+        foreach (
+            [
+                $this->probe,
+                $this->ssl,
+                $this->whois,
+                $this->dns,
+                $this->content,
+                $this->port,
+                $this->securityHeaders,
+                $this->robotsTxt,
+                $this->sitemap,
+                $this->emailSecurity,
+                $this->tlsCipher,
+                $this->cookieSecurity,
+            ] as $slot
+        ) {
+            if ($slot !== null && $slot->isErr()) {
+                $error = $slot->error();
+
+                if ($error instanceof CheckError) {
+                    $errors[] = $error;
+                }
+            }
+        }
+
+        return $errors;
     }
 
     public function hasErrors(): bool
     {
-        return $this->errors !== [];
+        return $this->getErrors() !== [];
     }
 
     /**
@@ -146,20 +249,36 @@ final readonly class DomainHealthReport implements JsonSerializable
             'host' => $this->host,
             'status' => $this->getStatus()->value,
             'checks' => $this->getChecks(),
-            'errors' => $this->errors,
-            'probe' => $this->probe,
-            'ssl' => $this->ssl,
-            'whois' => $this->whois,
-            'dns' => $this->dns,
-            'content' => $this->content,
-            'port' => $this->port,
-            'securityHeaders' => $this->securityHeaders,
-            'robotsTxt' => $this->robotsTxt,
-            'sitemap' => $this->sitemap,
-            'emailSecurity' => $this->emailSecurity,
-            'tlsCipher' => $this->tlsCipher,
-            'cookieSecurity' => $this->cookieSecurity,
+            'errors' => $this->getErrors(),
+            'probe' => self::serialize(slot: $this->probe),
+            'ssl' => self::serialize(slot: $this->ssl),
+            'whois' => self::serialize(slot: $this->whois),
+            'dns' => self::serialize(slot: $this->dns),
+            'content' => self::serialize(slot: $this->content),
+            'port' => self::serialize(slot: $this->port),
+            'securityHeaders' => self::serialize(slot: $this->securityHeaders),
+            'robotsTxt' => self::serialize(slot: $this->robotsTxt),
+            'sitemap' => self::serialize(slot: $this->sitemap),
+            'emailSecurity' => self::serialize(slot: $this->emailSecurity),
+            'tlsCipher' => self::serialize(slot: $this->tlsCipher),
+            'cookieSecurity' => self::serialize(slot: $this->cookieSecurity),
         ];
+    }
+
+    private static function serialize(?Result $slot): mixed
+    {
+        return $slot?->unwrapOr(default: $slot->error());
+    }
+
+    private static function failed(CheckName $check, mixed $error): CheckResult
+    {
+        $message = $error instanceof CheckError ? $error->message : 'Check failed';
+
+        return new CheckResult(
+            check: $check,
+            status: CheckStatus::UNKNOWN,
+            reason: \sprintf('Check failed: %s', $message),
+        );
     }
 
     private function probeCheck(ProbeResult $probe): CheckResult
