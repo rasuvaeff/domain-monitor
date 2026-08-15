@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 — 2026-08-15
+
+### Retries (roadmap B1)
+
+- `DomainMonitorOptions` accepts an optional `retry: ?Rasuvaeff\Retry\Retry`
+  policy (`rasuvaeff/retry` is now a runtime dependency). Every check —
+  including the HTTP probe — is wrapped in the policy when configured.
+- `null` (default) keeps the legacy single-attempt behaviour.
+- On exhaustion the `RetryExhausted` message (attempt count + last error) is
+  recorded as that check's `CheckError`; probe exhaustion is treated like a
+  probe failure (`status: 0`, response-dependent checks skipped).
+- Non-retryable exceptions are rethrown as-is and land in `getErrors()` as before.
 
 ### Circuit breaker (roadmap B2)
 
@@ -20,17 +31,6 @@
   which overrides the constructor's `timeoutSeconds: float`; the resolved value
   is exposed as the same `timeoutSeconds` property the services already consume.
   Replacing the float params is deferred to 2.0.
-
-### Retries (roadmap B1)
-
-- `DomainMonitorOptions` accepts an optional `retry: ?Rasuvaeff\Retry\Retry`
-  policy (`rasuvaeff/retry` is now a runtime dependency). Every check —
-  including the HTTP probe — is wrapped in the policy when configured.
-- `null` (default) keeps the legacy single-attempt behaviour.
-- On exhaustion the `RetryExhausted` message (attempt count + last error) is
-  recorded as that check's `CheckError`; probe exhaustion is treated like a
-  probe failure (`status: 0`, response-dependent checks skipped).
-- Non-retryable exceptions are rethrown as-is and land in `getErrors()` as before.
 
 ## 1.4.0 — 2026-07-29
 
