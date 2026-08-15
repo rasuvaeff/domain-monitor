@@ -11,6 +11,15 @@ Breaking major. See [UPGRADE.md](UPGRADE.md) for step-by-step migration.
   so breaking PRs for this release are gated, not blindly waved through.
 - `UPGRADE.md` added: per-step migration for every breaking change below.
 
+### Strict thresholds by default (D3)
+
+- `ReportThresholds` default flips to `sslWarnDays: 30` (was `null`): SSL
+  becomes `WARNING` 30 days before expiry. `getStatus()` for near-expiry
+  certificates changes from `OK` to `WARNING`.
+- `ReportThresholds::legacy()` restores the 1.x behaviour (`sslWarnDays: null`).
+- `ReportThresholds::strict()` (`sslWarnDays: 14`) unchanged; explicit
+  `sslWarnDays: null` still disables the window.
+
 ## 1.5.0 — 2026-08-15
 
 ### Retries (roadmap B1)

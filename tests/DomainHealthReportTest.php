@@ -356,7 +356,7 @@ final class DomainHealthReportTest
         Assert::string($check->reason)->contains('Certificate expired');
     }
 
-    public function sslWarnDaysFlipsOkToWarning(): void
+    public function defaultThresholdsWarnNearSslExpiryAndLegacyDoesNot(): void
     {
         $ssl = new SslCertificate(
             validFrom: new DateTimeImmutable(datetime: '-10 days'),
@@ -365,10 +365,10 @@ final class DomainHealthReportTest
         );
 
         $default = new DomainHealthReport(host: 'example.com', ssl: $ssl);
-        $strict = new DomainHealthReport(host: 'example.com', ssl: $ssl, thresholds: new ReportThresholds(sslWarnDays: 30));
+        $legacy = new DomainHealthReport(host: 'example.com', ssl: $ssl, thresholds: ReportThresholds::legacy());
 
-        Assert::same($default->getCheck(name: CheckName::Ssl)?->status, CheckStatus::OK);
-        Assert::same($strict->getCheck(name: CheckName::Ssl)?->status, CheckStatus::WARNING);
+        Assert::same($default->getCheck(name: CheckName::Ssl)?->status, CheckStatus::WARNING);
+        Assert::same($legacy->getCheck(name: CheckName::Ssl)?->status, CheckStatus::OK);
     }
 
     public function customWhoisWarnDaysWidensWarningWindow(): void
