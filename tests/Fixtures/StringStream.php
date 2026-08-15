@@ -12,7 +12,7 @@ final class StringStream implements StreamInterface
     private int $position = 0;
 
     public function __construct(
-        private string $content,
+        private readonly string $content,
     ) {}
 
     public function __toString(): string
@@ -30,7 +30,7 @@ final class StringStream implements StreamInterface
     }
 
     #[\Override]
-    public function getSize(): ?int
+    public function getSize(): int
     {
         return \strlen(string: $this->content);
     }

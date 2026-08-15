@@ -18,7 +18,7 @@ final readonly class DnsService
     public function __construct(?callable $resolver = null)
     {
         $this->resolver = $resolver === null
-            ? self::defaultResolver()
+            ? $this->defaultResolver()
             : Closure::fromCallable(callback: $resolver);
     }
 
@@ -73,7 +73,7 @@ final readonly class DnsService
         );
     }
 
-    private static function defaultResolver(): Closure
+    private function defaultResolver(): Closure
     {
         return static fn(string $host, int $type): array|false => \dns_get_record(hostname: $host, type: $type);
     }

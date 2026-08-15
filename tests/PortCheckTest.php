@@ -23,7 +23,6 @@ final class PortCheckTest
             host: 'example.com',
             port: 443,
             connectTime: 0.12,
-            error: null,
         );
 
         Assert::same($check->status, CheckStatus::OK);

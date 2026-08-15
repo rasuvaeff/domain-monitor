@@ -73,7 +73,7 @@ final readonly class CookieSecurityService
      */
     private function parse(string $header): ?array
     {
-        $parts = \array_map('trim', \explode(separator: ';', string: $header));
+        $parts = \array_map(trim(...), \explode(separator: ';', string: $header));
         $firstPart = $parts[0] ?? '';
 
         if ($firstPart === '') {
