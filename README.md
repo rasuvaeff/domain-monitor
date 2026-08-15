@@ -264,15 +264,14 @@ $report = $monitor->check(
 
 ### Typed timeouts
 
-`rasuvaeff/duration` is installed automatically. Both `DomainMonitorOptions` and `HttpProbeOptions` accept `timeout: ?Duration`, which takes precedence over the legacy `timeoutSeconds: float` (both stay — replacing the float is a 2.0 decision):
+`rasuvaeff/duration` is installed automatically. Both `DomainMonitorOptions` and `HttpProbeOptions` accept a typed timeout via `withTimeout(Duration)`, which overrides the constructor's `timeoutSeconds: float` (both stay — replacing the float is a 2.0 decision):
 
 ```php
 use Rasuvaeff\Duration\Duration;
 
-$options = new DomainMonitorOptions(
-    timeout: Duration::seconds(15),       // wins over timeoutSeconds
-    timeoutSeconds: 10.0,                 // ignored when timeout is set
-);
+$options = (new DomainMonitorOptions())
+    ->withTimeout(Duration::seconds(15));
+
 Assert::same($options->timeoutSeconds, 15.0); // resolved value, single source for services
 ```
 

@@ -19,11 +19,9 @@ final readonly class DomainMonitorOptions
 
     public string $httpMethod;
 
-    public float $timeoutSeconds;
-
     public function __construct(
         public int $port = 443,
-        float $timeoutSeconds = 10.0,
+        public float $timeoutSeconds = 10.0,
         public string $userAgent = self::DEFAULT_USER_AGENT,
         string $httpMethod = 'GET',
         public ?string $expectedOrg = null,
@@ -39,13 +37,11 @@ final readonly class DomainMonitorOptions
             throw new InvalidArgumentException(message: \sprintf('Invalid port %d', $port));
         }
 
-        if ($timeout !== null) {
-            $timeoutSeconds = $timeout->toSeconds();
+        if ($timeoutSeconds <= 0) {
+            throw new InvalidArgumentException(message: 'Timeout must be greater than 0');
         }
 
-        $this->timeoutSeconds = $timeoutSeconds;
-
-        if ($this->timeoutSeconds <= 0) {
+        if ($timeout !== null && $timeout->toSeconds() <= 0) {
             throw new InvalidArgumentException(message: 'Timeout must be greater than 0');
         }
 
@@ -66,5 +62,23 @@ final readonly class DomainMonitorOptions
         if ($expectedOrg !== null && \trim(string: $expectedOrg) === '') {
             throw new InvalidArgumentException(message: 'Expected organization must not be empty');
         }
+    }
+
+    public function withTimeout(Duration $timeout): self
+    {
+        return new self(
+            port: $this->port,
+            timeoutSeconds: $timeout->toSeconds(),
+            userAgent: $this->userAgent,
+            httpMethod: $this->httpMethod,
+            expectedOrg: $this->expectedOrg,
+            expectedStatus: $this->expectedStatus,
+            requiredText: $this->requiredText,
+            forbiddenText: $this->forbiddenText,
+            thresholds: $this->thresholds,
+            retry: $this->retry,
+            circuitBreaker: $this->circuitBreaker,
+            timeout: $timeout,
+        );
     }
 }

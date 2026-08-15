@@ -26,20 +26,19 @@ final class HttpProbeOptionsTest
         Assert::null($options->timeout);
     }
 
-    public function timeoutDurationTakesPrecedenceOverFloat(): void
+    public function withTimeoutResolvesSecondsFromDuration(): void
     {
-        $options = new HttpProbeOptions(
-            timeoutSeconds: 30.0,
-            timeout: Duration::seconds(2),
-        );
+        $options = (new HttpProbeOptions(timeoutSeconds: 30.0))
+            ->withTimeout(Duration::seconds(2));
 
         Assert::same($options->timeoutSeconds, 2.0);
+        Assert::notNull($options->timeout);
     }
 
     public function zeroTimeoutDurationThrows(): void
     {
         try {
-            new HttpProbeOptions(timeout: Duration::zero());
+            (new HttpProbeOptions())->withTimeout(Duration::zero());
             Assert::fail('Expected InvalidArgumentException');
         } catch (InvalidArgumentException $e) {
             Assert::string($e->getMessage())->contains('Timeout must be greater than 0');
