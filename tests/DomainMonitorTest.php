@@ -32,6 +32,7 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FlakyHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Rasuvaeff\DomainMonitor\Tests\Fixtures\StubDnsService;
 use Rasuvaeff\Duration\Duration;
 use Rasuvaeff\Retry\Retry;
 use Testo\Assert;
@@ -66,6 +67,76 @@ final class DomainMonitorTest
         Assert::same($report->host, 'example.com');
     }
 
+    public function acceptsCustomServiceImplementationsViaInterfaces(): void
+    {
+        $monitor = new DomainMonitor(dns: new StubDnsService());
+
+        $report = $monitor->check(host: 'example.com');
+
+        Assert::same($report->dns?->unwrap()->a, ['9.9.9.9']);
+    }
+
+    public function exhaustedBudgetSkipsChecksAsErrSlots(): void
+    {
+        $connectorCalls = 0;
+        $connector = static function () use (&$connectorCalls): array {
+            $connectorCalls++;
+
+            return ['success' => true, 'connectTime' => 0.01, 'error' => null];
+        };
+
+        $monitor = new DomainMonitor(
+            port: new PortService(connector: $connector),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(maxDuration: Duration::zero()),
+        );
+
+        Assert::same($connectorCalls, 0);
+        Assert::true($report->port?->isErr() ?? false);
+
+        $errors = $report->getErrors();
+
+        Assert::count($errors, 1);
+        Assert::same($errors[0]->check, CheckName::Port);
+        Assert::same($errors[0]->message, 'Time budget exceeded');
+        Assert::same($report->getStatus(), CheckStatus::UNKNOWN);
+    }
+
+    public function generousBudgetRunsAllChecks(): void
+    {
+        $monitor = new DomainMonitor(
+            port: new PortService(connector: static fn(): array => ['success' => true, 'connectTime' => 0.01, 'error' => null]),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(maxDuration: Duration::seconds(60)),
+        );
+
+        Assert::true($report->port?->isOk() ?? false);
+        Assert::same($report->port->unwrap()->status, CheckStatus::OK);
+        Assert::false($report->hasErrors());
+    }
+
+    public function checkManyReturnsReportsKeyedByNormalizedHost(): void
+    {
+        $monitor = new DomainMonitor(dns: new StubDnsService());
+
+        $reports = $monitor->checkMany(
+            hosts: ['https://EXAMPLE.com/path', 'example.org'],
+            options: new DomainMonitorOptions(maxDuration: Duration::seconds(60)),
+        );
+
+        Assert::count($reports, 2);
+        Assert::same(\array_keys($reports), ['example.com', 'example.org']);
+        Assert::instanceOf($reports['example.com'], DomainHealthReport::class);
+        Assert::same($reports['example.org']->dns?->unwrap()->a, ['9.9.9.9']);
+        Assert::same($reports['example.com']->host, 'example.com');
+    }
+
     public function throwsWhenSecurityHeadersConfiguredWithoutHttpProbe(): void
     {
         try {
@@ -86,7 +157,7 @@ final class DomainMonitorTest
         $report = $monitor->check(host: 'example.com');
 
         Assert::notNull($report->probe);
-        Assert::same($report->probe->status, 200);
+        Assert::same($report->probe->unwrap()->status, 200);
         Assert::instanceOf($client->lastRequest, FakeRequest::class);
         Assert::same($client->lastRequest->getUriString(), 'https://example.com/');
     }
@@ -113,11 +184,11 @@ final class DomainMonitorTest
         $report = $monitor->check(host: 'example.com');
 
         Assert::notNull($report->securityHeaders);
-        Assert::true($report->securityHeaders->hasHsts);
-        Assert::true($report->securityHeaders->hasContentSecurityPolicy);
-        Assert::true($report->securityHeaders->hasXFrameOptions);
-        Assert::true($report->securityHeaders->hasXContentTypeOptions);
-        Assert::same($report->securityHeaders->status, CheckStatus::OK);
+        Assert::true($report->securityHeaders->unwrap()->hasHsts);
+        Assert::true($report->securityHeaders->unwrap()->hasContentSecurityPolicy);
+        Assert::true($report->securityHeaders->unwrap()->hasXFrameOptions);
+        Assert::true($report->securityHeaders->unwrap()->hasXContentTypeOptions);
+        Assert::same($report->securityHeaders->unwrap()->status, CheckStatus::OK);
     }
 
     public function reusesProbeResponseForContentCheck(): void
@@ -141,8 +212,8 @@ final class DomainMonitorTest
         );
 
         Assert::notNull($report->content);
-        Assert::true($report->content->requiredTextFound);
-        Assert::same($report->content->status, CheckStatus::OK);
+        Assert::true($report->content->unwrap()->requiredTextFound);
+        Assert::same($report->content->unwrap()->status, CheckStatus::OK);
     }
 
     public function contentMakesOwnRequestWhenProbeNotConfigured(): void
@@ -155,7 +226,7 @@ final class DomainMonitorTest
         $report = $monitor->check(host: 'example.com');
 
         Assert::notNull($report->content);
-        Assert::same($report->content->status, CheckStatus::OK);
+        Assert::same($report->content->unwrap()->status, CheckStatus::OK);
         Assert::notNull($client->lastRequest);
         Assert::same($client->lastRequest->getUriString(), 'https://example.com/');
     }
@@ -174,9 +245,9 @@ final class DomainMonitorTest
         $report = $monitor->check(host: 'example.com');
 
         Assert::notNull($report->probe);
-        Assert::same($report->probe->status, 0);
-        Assert::true($report->probe->totalTime >= 0.0);
-        Assert::true($report->probe->totalTime < 1.0);
+        Assert::same($report->probe->unwrap()->status, 0);
+        Assert::true($report->probe->unwrap()->totalTime >= 0.0);
+        Assert::true($report->probe->unwrap()->totalTime < 1.0);
         Assert::same($report->getStatus(), CheckStatus::CRITICAL);
         Assert::null($report->securityHeaders);
 
@@ -189,7 +260,7 @@ final class DomainMonitorTest
         Assert::same($probeLog['context']['error'], 'connection refused');
     }
 
-    public function serviceExceptionIsCaughtAndOmittedFromReport(): void
+    public function serviceExceptionBecomesErrSlot(): void
     {
         $monitor = new DomainMonitor(
             port: new PortService(connector: static fn(): array => throw new \RuntimeException(message: 'port closed')),
@@ -197,7 +268,9 @@ final class DomainMonitorTest
 
         $report = $monitor->check(host: 'example.com');
 
-        Assert::null($report->port);
+        Assert::notNull($report->port);
+        Assert::true($report->port->isErr());
+        Assert::false($report->port->isOk());
     }
 
     public function serviceExceptionIsLoggedWithCheckName(): void
@@ -260,8 +333,8 @@ final class DomainMonitorTest
 
         Assert::same($resolverHost, 'example.com');
         Assert::notNull($report->dns);
-        Assert::same($report->dns->a, ['1.2.3.4']);
-        Assert::same($report->dns->ns, ['ns1.example.com']);
+        Assert::same($report->dns->unwrap()->a, ['1.2.3.4']);
+        Assert::same($report->dns->unwrap()->ns, ['ns1.example.com']);
     }
 
     public function returnsProperDomainHealthReportInstance(): void
@@ -297,7 +370,7 @@ final class DomainMonitorTest
 
         Assert::same($connectorCalls, 3);
         Assert::notNull($report->port);
-        Assert::same($report->port->status, CheckStatus::OK);
+        Assert::same($report->port->unwrap()->status, CheckStatus::OK);
         Assert::false($report->hasErrors());
     }
 
@@ -320,7 +393,7 @@ final class DomainMonitorTest
         );
 
         Assert::same($connectorCalls, 2);
-        Assert::null($report->port);
+        Assert::true($report->port?->isErr() ?? false);
         Assert::true($report->hasErrors());
 
         $errors = $report->getErrors();
@@ -368,7 +441,7 @@ final class DomainMonitorTest
 
         Assert::same($client->calls, 2);
         Assert::notNull($report->probe);
-        Assert::same($report->probe->status, 200);
+        Assert::same($report->probe->unwrap()->status, 200);
         Assert::false($report->hasErrors());
     }
 
@@ -392,7 +465,7 @@ final class DomainMonitorTest
 
         Assert::same($client->calls, 2);
         Assert::notNull($report->probe);
-        Assert::same($report->probe->status, 0);
+        Assert::same($report->probe->unwrap()->status, 0);
         Assert::null($report->securityHeaders);
         Assert::false($report->hasErrors());
 
@@ -418,7 +491,7 @@ final class DomainMonitorTest
 
         Assert::same($client->calls, 1);
         Assert::notNull($report->probe);
-        Assert::same($report->probe->status, 0);
+        Assert::same($report->probe->unwrap()->status, 0);
         Assert::same($report->getStatus(), CheckStatus::CRITICAL);
     }
 
@@ -508,7 +581,7 @@ final class DomainMonitorTest
 
         $report = $monitor->check(host: 'example.com');
 
-        Assert::null($report->port);
+        Assert::true($report->port?->isErr() ?? false);
         Assert::true($report->hasErrors());
 
         $errors = $report->getErrors();
@@ -594,16 +667,16 @@ final class DomainMonitorTest
 
         $report = $monitor->check(host: 'example.com');
 
-        Assert::same($report->probe?->status, 200);
-        Assert::true($report->securityHeaders?->hasHsts);
-        Assert::same($report->content?->status, CheckStatus::OK);
-        Assert::true($report->robotsTxt?->exists);
-        Assert::same($report->robotsTxt?->sitemaps, ['https://example.com/sitemap.xml']);
-        Assert::true($report->sitemap?->exists);
-        Assert::same($report->sitemap?->urlCount, 1);
-        Assert::same($report->dns?->a, ['1.2.3.4']);
-        Assert::same($report->port?->status, CheckStatus::OK);
-        Assert::same($report->port?->connectTime, 0.02);
+        Assert::same($report->probe?->unwrap()?->status, 200);
+        Assert::true($report->securityHeaders?->unwrap()?->hasHsts);
+        Assert::same($report->content?->unwrap()?->status, CheckStatus::OK);
+        Assert::true($report->robotsTxt?->unwrap()?->exists);
+        Assert::same($report->robotsTxt?->unwrap()?->sitemaps, ['https://example.com/sitemap.xml']);
+        Assert::true($report->sitemap?->unwrap()?->exists);
+        Assert::same($report->sitemap?->unwrap()?->urlCount, 1);
+        Assert::same($report->dns?->unwrap()?->a, ['1.2.3.4']);
+        Assert::same($report->port?->unwrap()?->status, CheckStatus::OK);
+        Assert::same($report->port?->unwrap()?->connectTime, 0.02);
         Assert::same($report->getStatus(), CheckStatus::OK);
     }
 }

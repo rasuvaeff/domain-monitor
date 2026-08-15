@@ -14,6 +14,7 @@
 | `cookie-security.php` | Set-Cookie attributes (Secure / HttpOnly / SameSite / `__Host-` prefix) | Yes |
 | `retry.php` | Retrying flaky checks with `rasuvaeff/retry` policy via `DomainMonitorOptions::retry` | Yes |
 | `circuit-breaker.php` | Per-host circuit breaker around the whole check run + typed `Duration` timeout | Yes |
+| `check-many.php` | Batch `checkMany()` over a host list with a per-run `maxDuration` budget | Yes |
 | `report.php` | Building a `DomainHealthReport` from DTOs | No |
 | `report-diff.php` | Diffing two reports into per-check status transitions | No |
 

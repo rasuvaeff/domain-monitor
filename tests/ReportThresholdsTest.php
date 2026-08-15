@@ -14,12 +14,27 @@ use Testo\Test;
 #[Covers(ReportThresholds::class)]
 final class ReportThresholdsTest
 {
-    public function defaultDisablesSslWarningAndKeepsThirtyDayWhoisWindow(): void
+    public function defaultWarnsThirtyDaysBeforeSslExpiry(): void
     {
         $thresholds = ReportThresholds::default();
 
+        Assert::same($thresholds->sslWarnDays, 30);
+        Assert::same($thresholds->whoisWarnDays, 30);
+    }
+
+    public function legacyDisablesSslWarningAndKeepsThirtyDayWhoisWindow(): void
+    {
+        $thresholds = ReportThresholds::legacy();
+
         Assert::null($thresholds->sslWarnDays);
         Assert::same($thresholds->whoisWarnDays, 30);
+    }
+
+    public function explicitNullSslWarnDaysDisablesWarning(): void
+    {
+        $thresholds = new ReportThresholds(sslWarnDays: null);
+
+        Assert::null($thresholds->sslWarnDays);
     }
 
     public function strictEnablesSslWarning(): void
@@ -69,7 +84,7 @@ final class ReportThresholdsTest
     public function serializesNullSslWarnDays(): void
     {
         Assert::same(
-            ReportThresholds::default()->jsonSerialize(),
+            ReportThresholds::legacy()->jsonSerialize(),
             ['sslWarnDays' => null, 'whoisWarnDays' => 30],
         );
     }

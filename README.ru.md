@@ -169,9 +169,24 @@ echo $report->getStatus()->value;
 
 ## Чтение отчёта
 
+Каждый слот проверки в отчёте — `Result<CheckXxx, CheckError>`
+(`rasuvaeff/result`): `Ok` несёт DTO-результат, `Err` — `CheckError`, `null` —
+проверка не настроена. Конструктор по-прежнему принимает «голые» DTO
+(оборачивает их в `Ok`):
+
+```php
+$sslSlot = $report->ssl; // Result<SslCertificate, CheckError>|null
+
+if ($sslSlot?->isOk()) {
+    $cert = $sslSlot->unwrap(); // SslCertificate: subjectCn, validUntil, daysUntilExpiry()...
+} elseif ($sslSlot !== null) {
+    $error = $sslSlot->error(); // CheckError { check, message }
+}
+```
+
 `getStatus()` — это агрегированный статус (худший среди всех проверок). Чтобы
-понять *почему*, обойдите результаты каждой проверки — каждый несёт `CheckName`,
-`CheckStatus` и человекочитаемый `reason`:
+понять *почему*, `getChecks()` вычисляет каждый слот в `list<CheckResult>` —
+каждый несёт `CheckName`, `CheckStatus` и человекочитательный `reason`:
 
 ```php
 foreach ($report->getChecks() as $result) {
@@ -187,8 +202,8 @@ $ssl = $report->getCheck(name: CheckName::Ssl); // ?CheckResult
 ### Ошибки против отключённых проверок
 
 Проверка, которая **не настроена** — это `null`. Проверка, которая **запускалась,
-но упала** — записывается отдельно: она появляется в `getChecks()` как `UNKNOWN`
-(никогда не завышает агрегат) и в `getErrors()`:
+но упала** — слот `Err`: она появляется в `getChecks()` как `UNKNOWN`
+(никогда не завышает агрегат) и в производных `getErrors()`/`hasErrors()`:
 
 ```php
 if ($report->hasErrors()) {
@@ -204,9 +219,9 @@ if ($report->hasErrors()) {
 
 ### Пороги
 
-По умолчанию SSL становится `CRITICAL` только после истечения срока, а WHOIS
-предупреждает за 30 дней. Включите «скорого истечения SSL = warning» (и
-настройте окно WHOIS) через `ReportThresholds`:
+По умолчанию SSL предупреждает (`WARNING`) за 30 дней до истечения и становится
+`CRITICAL` после; WHOIS предупреждает за 30 дней. Настройте (или отключите)
+окна через `ReportThresholds`:
 
 ```php
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
@@ -216,12 +231,50 @@ $report = $monitor->check(
     host: 'example.com',
     options: new DomainMonitorOptions(
         thresholds: ReportThresholds::strict(), // SSL warns 14 days before expiry
-        // or: new ReportThresholds(sslWarnDays: 30, whoisWarnDays: 45)
+        // or: new ReportThresholds(sslWarnDays: 60, whoisWarnDays: 45)
+        // or: ReportThresholds::legacy() — поведение 1.x, без окна предупреждения SSL
     ),
 );
 ```
 
-`ReportThresholds::default()` точно воспроизводит поведение до версии 1.2.0.
+`ReportThresholds::legacy()` точно воспроизводит поведение до версии 2.0
+(`sslWarnDays: null`).
+
+### Временной бюджет
+
+`DomainMonitorOptions::maxDuration: ?Duration` ограничивает один прогон
+`check()`. После дедлайна каждая оставшаяся проверка пропускается и
+записывается как слот `Err` («Time budget exceeded», `UNKNOWN` в
+`getChecks()` — не завышает агрегат):
+
+```php
+use Rasuvaeff\Duration\Duration;
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(maxDuration: Duration::seconds(5)),
+);
+```
+
+`null` (по умолчанию) = без бюджета. Бюджет действует на один вызов
+`check()` — медленный хост не съедает бюджет следующего.
+
+### Пакетные проверки
+
+`checkMany(hosts:, options:)` прогоняет полный пайплайн по списку хостов и
+ключует результаты по нормализованному хосту:
+
+```php
+$reports = $monitor->checkMany(
+    hosts: ['example.com', 'https://EXAMPLE.org/path'],
+);
+
+$status = $reports['example.org']->getStatus(); // ключи нормализованы
+```
+
+Последовательно by design (параллельное исполнение не входит в 2.0); каждый
+хост получает свежий временной бюджет. Невалидный хост прерывает батч
+`InvalidArgumentException` из нормализации хоста.
 
 ### Повторы
 

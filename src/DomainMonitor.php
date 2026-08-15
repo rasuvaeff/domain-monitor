@@ -13,6 +13,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Rasuvaeff\CircuitBreaker\CircuitOpenException;
+use Rasuvaeff\Result\Result;
 use Rasuvaeff\Retry\Retry;
 use Rasuvaeff\Retry\RetryExhausted;
 use Throwable;
@@ -22,20 +23,22 @@ use Throwable;
  */
 final readonly class DomainMonitor implements DomainMonitorInterface
 {
+    private const string BUDGET_MESSAGE = 'Time budget exceeded';
+
     public function __construct(
         private LoggerInterface $logger = new NullLogger(),
-        public ?HttpProbeService $httpProbe = null,
-        public ?SslCertificateService $ssl = null,
-        public ?WhoisService $whois = null,
-        public ?DnsService $dns = null,
-        public ?PortService $port = null,
-        public ?SecurityHeadersService $securityHeaders = null,
-        public ?RobotsTxtService $robotsTxt = null,
-        public ?SitemapService $sitemap = null,
-        public ?HttpContentCheckService $content = null,
-        public ?EmailSecurityService $emailSecurity = null,
-        public ?TlsCipherService $tlsCipher = null,
-        public ?CookieSecurityService $cookieSecurity = null,
+        public ?HttpProbeServiceInterface $httpProbe = null,
+        public ?SslCertificateServiceInterface $ssl = null,
+        public ?WhoisServiceInterface $whois = null,
+        public ?DnsServiceInterface $dns = null,
+        public ?PortServiceInterface $port = null,
+        public ?SecurityHeadersServiceInterface $securityHeaders = null,
+        public ?RobotsTxtServiceInterface $robotsTxt = null,
+        public ?SitemapServiceInterface $sitemap = null,
+        public ?HttpContentCheckServiceInterface $content = null,
+        public ?EmailSecurityServiceInterface $emailSecurity = null,
+        public ?TlsCipherServiceInterface $tlsCipher = null,
+        public ?CookieSecurityServiceInterface $cookieSecurity = null,
     ) {
         if (($securityHeaders !== null || $cookieSecurity !== null) && $httpProbe === null) {
             throw new \InvalidArgumentException(
@@ -97,10 +100,23 @@ final readonly class DomainMonitor implements DomainMonitorInterface
 
             return new DomainHealthReport(
                 host: $normalizedHost,
+                probe: Result::err(error: new CheckError(check: CheckName::Probe, message: $exception->getMessage())),
                 thresholds: $options->thresholds,
-                errors: [new CheckError(check: CheckName::Probe, message: $exception->getMessage())],
             );
         }
+    }
+
+    #[\Override]
+    public function checkMany(array $hosts, ?DomainMonitorOptions $options = null): array
+    {
+        $reports = [];
+
+        foreach ($hosts as $host) {
+            $report = $this->check(host: $host, options: $options);
+            $reports[$report->host] = $report;
+        }
+
+        return $reports;
     }
 
     private function runChecks(string $host, DomainMonitorOptions $options): DomainHealthReport
@@ -112,16 +128,20 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             userAgent: $options->userAgent,
         );
 
-        /** @var list<CheckError> $errors */
-        $errors = [];
         $retry = $options->retry;
+        $deadline = $options->maxDuration !== null
+            ? \microtime(as_float: true) + $options->maxDuration->toSeconds()
+            : null;
 
+        /** @var Result<ProbeResult, CheckError>|null $probe */
         $probe = null;
         $response = null;
 
         $httpProbe = $this->httpProbe;
 
-        if ($httpProbe !== null) {
+        if ($httpProbe !== null && $this->deadlineHit(deadline: $deadline)) {
+            $probe = Result::err(error: new CheckError(check: CheckName::Probe, message: self::BUDGET_MESSAGE));
+        } elseif ($httpProbe !== null) {
             $startedAt = \microtime(as_float: true);
 
             try {
@@ -132,7 +152,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                         options: $probeOptions,
                     ),
                 );
-                $probe = $probeWithResponse->result;
+                $probe = Result::ok(value: $probeWithResponse->result);
                 $response = $probeWithResponse->response;
             } catch (ClientExceptionInterface|RetryExhausted $exception) {
                 $this->logger->warning(
@@ -144,22 +164,23 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     ],
                 );
 
-                $probe = new ProbeResult(
+                $probe = Result::ok(value: new ProbeResult(
                     status: 0,
                     totalTime: \microtime(as_float: true) - $startedAt,
-                );
+                ));
             }
         }
 
+        /** @var Result<SecurityHeadersCheck, CheckError>|null $securityHeaders */
         $securityHeaders = null;
         $securityHeadersService = $this->securityHeaders;
 
         if ($response !== null && $securityHeadersService !== null) {
-            $securityHeaders = $this->runCheck(
+            $securityHeaders = $this->runBudgeted(
                 name: CheckName::SecurityHeaders,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $securityHeadersService->check(response: $response),
-                errors: $errors,
                 retry: $retry,
             );
         }
@@ -170,140 +191,149 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             response: $response,
             options: $options,
             probeOptions: $probeOptions,
-            errors: $errors,
             retry: $retry,
+            deadline: $deadline,
         );
 
+        /** @var Result<SslCertificate, CheckError>|null $ssl */
         $ssl = null;
         $sslService = $this->ssl;
 
         if ($sslService !== null) {
-            $ssl = $this->runCheck(
+            $ssl = $this->runBudgeted(
                 name: CheckName::Ssl,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $sslService->check(
                     host: $host,
                     expectedOrg: $options->expectedOrg,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<TldInfo, CheckError>|null $whois */
         $whois = null;
         $whoisService = $this->whois;
 
         if ($whoisService !== null) {
-            $whois = $this->runCheck(
+            $whois = $this->runBudgeted(
                 name: CheckName::Whois,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $whoisService->check(host: $host),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<DnsRecords, CheckError>|null $dns */
         $dns = null;
         $dnsService = $this->dns;
 
         if ($dnsService !== null) {
-            $dns = $this->runCheck(
+            $dns = $this->runBudgeted(
                 name: CheckName::Dns,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $dnsService->check(host: $host),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<PortCheck, CheckError>|null $port */
         $port = null;
         $portService = $this->port;
 
         if ($portService !== null) {
-            $port = $this->runCheck(
+            $port = $this->runBudgeted(
                 name: CheckName::Port,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $portService->check(
                     host: $host,
                     port: $options->port,
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<RobotsTxtCheck, CheckError>|null $robotsTxt */
         $robotsTxt = null;
         $robotsTxtService = $this->robotsTxt;
 
         if ($robotsTxtService !== null) {
-            $robotsTxt = $this->runCheck(
+            $robotsTxt = $this->runBudgeted(
                 name: CheckName::RobotsTxt,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $robotsTxtService->check(
                     baseUrl: $baseUrl,
                     options: $probeOptions,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<SitemapCheck, CheckError>|null $sitemap */
         $sitemap = null;
         $sitemapService = $this->sitemap;
 
         if ($sitemapService !== null) {
-            $sitemap = $this->runCheck(
+            $sitemap = $this->runBudgeted(
                 name: CheckName::Sitemap,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $sitemapService->check(
                     sitemapUrl: "{$baseUrl}/sitemap.xml",
                     options: $probeOptions,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<EmailSecurityCheck, CheckError>|null $emailSecurity */
         $emailSecurity = null;
         $emailSecurityService = $this->emailSecurity;
 
         if ($emailSecurityService !== null) {
-            $emailSecurity = $this->runCheck(
+            $emailSecurity = $this->runBudgeted(
                 name: CheckName::EmailSecurity,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $emailSecurityService->check(host: $host),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<TlsCipherCheck, CheckError>|null $tlsCipher */
         $tlsCipher = null;
         $tlsCipherService = $this->tlsCipher;
 
         if ($tlsCipherService !== null) {
-            $tlsCipher = $this->runCheck(
+            $tlsCipher = $this->runBudgeted(
                 name: CheckName::TlsCipher,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $tlsCipherService->check(
                     host: $host,
                     port: $options->port,
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
 
+        /** @var Result<CookieSecurityCheck, CheckError>|null $cookieSecurity */
         $cookieSecurity = null;
         $cookieSecurityService = $this->cookieSecurity;
 
         if ($response !== null && $cookieSecurityService !== null) {
-            $cookieSecurity = $this->runCheck(
+            $cookieSecurity = $this->runBudgeted(
                 name: CheckName::CookieSecurity,
                 host: $host,
+                deadline: $deadline,
                 callback: fn() => $cookieSecurityService->check(response: $response),
-                errors: $errors,
                 retry: $retry,
             );
         }
@@ -320,7 +350,6 @@ final readonly class DomainMonitor implements DomainMonitorInterface
             robotsTxt: $robotsTxt,
             sitemap: $sitemap,
             thresholds: $options->thresholds,
-            errors: $errors,
             emailSecurity: $emailSecurity,
             tlsCipher: $tlsCipher,
             cookieSecurity: $cookieSecurity,
@@ -328,9 +357,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
     }
 
     /**
-     * @param list<CheckError> $errors
-     *
-     * @param-out list<CheckError> $errors
+     * @return Result<HttpContentCheck, CheckError>|null
      */
     private function resolveContent(
         string $host,
@@ -338,13 +365,17 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         ?ResponseInterface $response,
         DomainMonitorOptions $options,
         HttpProbeOptions $probeOptions,
-        array &$errors,
         ?Retry $retry = null,
-    ): ?HttpContentCheck {
+        ?float $deadline = null,
+    ): ?Result {
         $contentService = $this->content;
 
         if ($contentService === null) {
             return null;
+        }
+
+        if ($this->deadlineHit(deadline: $deadline)) {
+            return Result::err(error: new CheckError(check: CheckName::Content, message: self::BUDGET_MESSAGE));
         }
 
         if ($response !== null) {
@@ -357,7 +388,6 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                     requiredText: $options->requiredText,
                     forbiddenText: $options->forbiddenText,
                 ),
-                errors: $errors,
                 retry: $retry,
             );
         }
@@ -372,25 +402,48 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 forbiddenText: $options->forbiddenText,
                 options: $probeOptions,
             ),
-            errors: $errors,
             retry: $retry,
         );
     }
 
     /**
-     * @template T
+     * @template T of object
      *
-     * @param Closure(): T $callback
-     * @param list<CheckError> $errors
+     * @param Closure(): ?T $callback
      *
-     * @param-out list<CheckError> $errors
-     *
-     * @return T|null
+     * @return Result<T, CheckError>
      */
-    private function runCheck(CheckName $name, string $host, Closure $callback, array &$errors, ?Retry $retry = null): mixed
+    private function runBudgeted(CheckName $name, string $host, ?float $deadline, Closure $callback, ?Retry $retry = null): Result
+    {
+        if ($this->deadlineHit(deadline: $deadline)) {
+            return Result::err(error: new CheckError(check: $name, message: self::BUDGET_MESSAGE));
+        }
+
+        return $this->runCheck(name: $name, host: $host, callback: $callback, retry: $retry);
+    }
+
+    private function deadlineHit(?float $deadline): bool
+    {
+        return $deadline !== null && \microtime(as_float: true) >= $deadline;
+    }
+
+    /**
+     * @template T of object
+     *
+     * @param Closure(): ?T $callback
+     *
+     * @return Result<T, CheckError>
+     */
+    private function runCheck(CheckName $name, string $host, Closure $callback, ?Retry $retry = null): Result
     {
         try {
-            return $this->attempt(retry: $retry, operation: $callback);
+            $result = $this->attempt(retry: $retry, operation: $callback);
+
+            if ($result === null) {
+                throw new \UnexpectedValueException(message: 'Service returned no result');
+            }
+
+            return Result::ok(value: $result);
         } catch (Throwable $exception) {
             $this->logger->warning(
                 message: \sprintf('%s check failed: %s', $name->value, $exception->getMessage()),
@@ -400,9 +453,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 ],
             );
 
-            $errors[] = new CheckError(check: $name, message: $exception->getMessage());
-
-            return null;
+            return Result::err(error: new CheckError(check: $name, message: $exception->getMessage()));
         }
     }
 

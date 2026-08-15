@@ -159,7 +159,19 @@ echo $report->getStatus()->value;
 
 ## Reading the report
 
-`getStatus()` is the aggregate (worst of all checks). For the *why*, iterate per-check results — each carries a `CheckName`, a `CheckStatus`, and a human-readable `reason`:
+Every check slot on the report is a `Result<CheckXxx, CheckError>` (`rasuvaeff/result`): `Ok` carries the payload DTO, `Err` carries the `CheckError`, `null` means the check was not configured. The constructor still accepts bare DTOs (wrapped into `Ok` for you):
+
+```php
+$sslSlot = $report->ssl; // Result<SslCertificate, CheckError>|null
+
+if ($sslSlot?->isOk()) {
+    $cert = $sslSlot->unwrap(); // SslCertificate: subjectCn, validUntil, daysUntilExpiry()...
+} elseif ($sslSlot !== null) {
+    $error = $sslSlot->error(); // CheckError { check, message }
+}
+```
+
+`getStatus()` is the aggregate (worst of all checks). For the *why*, `getChecks()` evaluates every slot into a `list<CheckResult>` — each with a `CheckName`, a `CheckStatus`, and a human-readable `reason`:
 
 ```php
 foreach ($report->getChecks() as $result) {
@@ -174,7 +186,7 @@ $ssl = $report->getCheck(name: CheckName::Ssl); // ?CheckResult
 
 ### Errors vs disabled checks
 
-A check that was **not configured** is `null`. A check that **ran but threw** is recorded separately — it appears in `getChecks()` as `UNKNOWN` (never inflating the aggregate) and in `getErrors()`:
+A check that was **not configured** is `null`. A check that **ran but failed** is an `Err` slot — it appears in `getChecks()` as `UNKNOWN` (never inflating the aggregate) and in the derived `getErrors()`/`hasErrors()`.
 
 ```php
 if ($report->hasErrors()) {
@@ -189,7 +201,7 @@ Treat `getStatus() === CheckStatus::OK` together with `hasErrors() === true` as 
 
 ### Thresholds
 
-By default SSL is `CRITICAL` only once expired, and WHOIS warns within 30 days. Opt in to "SSL expiring soon = warning" (and tune the WHOIS window) with `ReportThresholds`:
+By default SSL warns `WARNING` 30 days before expiry and CRITICAL once expired; WHOIS warns within 30 days. Tune (or disable) the windows with `ReportThresholds`:
 
 ```php
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
@@ -199,12 +211,42 @@ $report = $monitor->check(
     host: 'example.com',
     options: new DomainMonitorOptions(
         thresholds: ReportThresholds::strict(), // SSL warns 14 days before expiry
-        // or: new ReportThresholds(sslWarnDays: 30, whoisWarnDays: 45)
+        // or: new ReportThresholds(sslWarnDays: 60, whoisWarnDays: 45)
+        // or: ReportThresholds::legacy() — 1.x behaviour, no SSL warning window
     ),
 );
 ```
 
-`ReportThresholds::default()` reproduces pre-1.2.0 behaviour exactly.
+`ReportThresholds::legacy()` reproduces pre-2.0 behaviour exactly (`sslWarnDays: null`).
+
+### Time budget
+
+`DomainMonitorOptions::maxDuration: ?Duration` caps a single `check()` run. Once the deadline passes, every remaining check is skipped and recorded as an `Err` slot (`"Time budget exceeded"`, `UNKNOWN` in `getChecks()` — never inflating the aggregate):
+
+```php
+use Rasuvaeff\Duration\Duration;
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(maxDuration: Duration::seconds(5)),
+);
+```
+
+`null` (default) = no budget. The budget is per `check()` call — a slow host does not eat into the next one.
+
+### Batch checks
+
+`checkMany(hosts:, options:)` runs the full pipeline for a list of hosts and keys the results by normalized host:
+
+```php
+$reports = $monitor->checkMany(
+    hosts: ['example.com', 'https://EXAMPLE.org/path'],
+);
+
+$status = $reports['example.org']->getStatus(); // keys are normalized
+```
+
+Sequential by design (parallel execution is not on the roadmap for 2.0); each host gets a fresh time budget. An invalid host aborts the batch with `InvalidArgumentException` from host normalization.
 
 ### Retries
 

@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.0.0 — 2026-08-15
+
+Breaking major. See [UPGRADE.md](UPGRADE.md) for step-by-step migration.
+
+### 2.0 plumbing
+
+- CI: the `Backward compatibility` step learns the intended-major tolerance
+  (a dated `## X.0.0` heading in this file over the latest tag passes code 3),
+  so breaking PRs for this release are gated, not blindly waved through.
+- `UPGRADE.md` added: per-step migration for every breaking change below.
+
+### Time budget and batch API (E2/E3)
+
+- `DomainMonitorOptions::maxDuration: ?Duration` caps a single `check()` run;
+  past the deadline every remaining check becomes an `Err` slot
+  ("Time budget exceeded"). `null` (default) = no budget.
+- `DomainMonitorInterface::checkMany(hosts:, options:)` returns
+  `array<string, DomainHealthReport>` keyed by normalized host; sequential,
+  fresh budget per host.
+
+### Result-typed report slots (D1)
+
+- `rasuvaeff/result` is now a runtime dependency.
+- Every `DomainHealthReport` check slot is `Result<XxxCheck, CheckError>|null`:
+  `Ok` = payload DTO, `Err` = `CheckError`, `null` = check not configured. The
+  `errors` constructor parameter is removed; `getErrors()`/`hasErrors()` are
+  derived from the `Err` slots.
+- The constructor still accepts bare DTOs (auto-wrapped into `Ok`); reading
+  slots requires unwrapping.
+- Services returning `null` (SSL/WHOIS lookup failure) now produce `Err` slots
+  instead of invisible `null` slots.
+- `jsonSerialize()` keeps the shape; `Err` slots serialize as `CheckError`,
+  `errors` key is derived.
+
+### Per-service interfaces (D2)
+
+- Every service implements a matching `*ServiceInterface`; `DomainMonitor`'s
+  constructor and promoted properties accept the interfaces, so a single check
+  can be swapped/mocked without touching the others.
+- Concrete services keep working as-is (they implement the interfaces).
+
+### Strict thresholds by default (D3)
+
+- `ReportThresholds` default flips to `sslWarnDays: 30` (was `null`): SSL
+  becomes `WARNING` 30 days before expiry. `getStatus()` for near-expiry
+  certificates changes from `OK` to `WARNING`.
+- `ReportThresholds::legacy()` restores the 1.x behaviour (`sslWarnDays: null`).
+- `ReportThresholds::strict()` (`sslWarnDays: 14`) unchanged; explicit
+  `sslWarnDays: null` still disables the window.
+
 ## 1.5.0 — 2026-08-15
 
 ### Retries (roadmap B1)

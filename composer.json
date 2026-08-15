@@ -34,6 +34,7 @@
         "psr/log": "^3.0",
         "rasuvaeff/circuit-breaker": "^1.0",
         "rasuvaeff/duration": "^1.0",
+        "rasuvaeff/result": "^1.0",
         "rasuvaeff/retry": "^1.0"
     },
     "require-dev": {

@@ -10,7 +10,7 @@ use InvalidArgumentException;
 /**
  * @api
  */
-final readonly class PortService
+final readonly class PortService implements PortServiceInterface
 {
     private Closure $connector;
 
@@ -21,6 +21,7 @@ final readonly class PortService
             : Closure::fromCallable(callback: $connector);
     }
 
+    #[\Override]
     public function check(string $host, int $port, float $timeoutSeconds = 5.0): PortCheck
     {
         if ($port < 1 || $port > 65535) {

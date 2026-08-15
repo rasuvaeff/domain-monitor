@@ -9,7 +9,7 @@ use Psr\Http\Message\ResponseInterface;
 /**
  * @api
  */
-final readonly class SecurityHeadersService
+final readonly class SecurityHeadersService implements SecurityHeadersServiceInterface
 {
     private const array REQUIRED_HEADERS = [
         'Strict-Transport-Security',
@@ -18,6 +18,7 @@ final readonly class SecurityHeadersService
         'X-Content-Type-Options',
     ];
 
+    #[\Override]
     public function check(ResponseInterface $response): SecurityHeadersCheck
     {
         $presentHeaders = [];

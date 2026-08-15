@@ -13,7 +13,7 @@ use Psr\Log\NullLogger;
 /**
  * @api
  */
-final readonly class RobotsTxtService
+final readonly class RobotsTxtService implements RobotsTxtServiceInterface
 {
     public function __construct(
         private ClientInterface $httpClient,
@@ -21,6 +21,7 @@ final readonly class RobotsTxtService
         private LoggerInterface $logger = new NullLogger(),
     ) {}
 
+    #[\Override]
     public function check(string $baseUrl, ?HttpProbeOptions $options = null): RobotsTxtCheck
     {
         $normalizedBaseUrl = (new HostNormalizer())->normalizeUrl(url: $baseUrl);
