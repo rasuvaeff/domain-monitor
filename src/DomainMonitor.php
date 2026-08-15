@@ -12,6 +12,7 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Rasuvaeff\CircuitBreaker\CircuitOpenException;
 use Rasuvaeff\Retry\Retry;
 use Rasuvaeff\Retry\RetryExhausted;
 use Throwable;
@@ -74,7 +75,37 @@ final readonly class DomainMonitor implements DomainMonitorInterface
     {
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);
         $options ??= new DomainMonitorOptions();
-        $baseUrl = "https://{$normalizedHost}";
+
+        $breaker = $options->circuitBreaker;
+
+        if ($breaker === null) {
+            return $this->runChecks(host: $normalizedHost, options: $options);
+        }
+
+        try {
+            return $breaker->call(
+                callback: fn(): DomainHealthReport => $this->runChecks(host: $normalizedHost, options: $options),
+            );
+        } catch (CircuitOpenException $exception) {
+            $this->logger->warning(
+                message: 'Domain check rejected by circuit breaker',
+                context: [
+                    'host' => $normalizedHost,
+                    'error' => $exception->getMessage(),
+                ],
+            );
+
+            return new DomainHealthReport(
+                host: $normalizedHost,
+                thresholds: $options->thresholds,
+                errors: [new CheckError(check: CheckName::Probe, message: $exception->getMessage())],
+            );
+        }
+    }
+
+    private function runChecks(string $host, DomainMonitorOptions $options): DomainHealthReport
+    {
+        $baseUrl = "https://{$host}";
         $probeOptions = new HttpProbeOptions(
             method: $options->httpMethod,
             timeoutSeconds: $options->timeoutSeconds,
@@ -107,7 +138,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
                 $this->logger->warning(
                     message: 'HTTP probe failed',
                     context: [
-                        'host' => $normalizedHost,
+                        'host' => $host,
                         'check' => 'probe',
                         'error' => $exception->getMessage(),
                     ],
@@ -126,7 +157,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($response !== null && $securityHeadersService !== null) {
             $securityHeaders = $this->runCheck(
                 name: CheckName::SecurityHeaders,
-                host: $normalizedHost,
+                host: $host,
                 callback: fn() => $securityHeadersService->check(response: $response),
                 errors: $errors,
                 retry: $retry,
@@ -134,7 +165,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         }
 
         $content = $this->resolveContent(
-            host: $normalizedHost,
+            host: $host,
             baseUrl: $baseUrl,
             response: $response,
             options: $options,
@@ -149,9 +180,9 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($sslService !== null) {
             $ssl = $this->runCheck(
                 name: CheckName::Ssl,
-                host: $normalizedHost,
+                host: $host,
                 callback: fn() => $sslService->check(
-                    host: $normalizedHost,
+                    host: $host,
                     expectedOrg: $options->expectedOrg,
                 ),
                 errors: $errors,
@@ -165,8 +196,8 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($whoisService !== null) {
             $whois = $this->runCheck(
                 name: CheckName::Whois,
-                host: $normalizedHost,
-                callback: fn() => $whoisService->check(host: $normalizedHost),
+                host: $host,
+                callback: fn() => $whoisService->check(host: $host),
                 errors: $errors,
                 retry: $retry,
             );
@@ -178,8 +209,8 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($dnsService !== null) {
             $dns = $this->runCheck(
                 name: CheckName::Dns,
-                host: $normalizedHost,
-                callback: fn() => $dnsService->check(host: $normalizedHost),
+                host: $host,
+                callback: fn() => $dnsService->check(host: $host),
                 errors: $errors,
                 retry: $retry,
             );
@@ -191,9 +222,9 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($portService !== null) {
             $port = $this->runCheck(
                 name: CheckName::Port,
-                host: $normalizedHost,
+                host: $host,
                 callback: fn() => $portService->check(
-                    host: $normalizedHost,
+                    host: $host,
                     port: $options->port,
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
@@ -208,7 +239,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($robotsTxtService !== null) {
             $robotsTxt = $this->runCheck(
                 name: CheckName::RobotsTxt,
-                host: $normalizedHost,
+                host: $host,
                 callback: fn() => $robotsTxtService->check(
                     baseUrl: $baseUrl,
                     options: $probeOptions,
@@ -224,7 +255,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($sitemapService !== null) {
             $sitemap = $this->runCheck(
                 name: CheckName::Sitemap,
-                host: $normalizedHost,
+                host: $host,
                 callback: fn() => $sitemapService->check(
                     sitemapUrl: "{$baseUrl}/sitemap.xml",
                     options: $probeOptions,
@@ -240,8 +271,8 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($emailSecurityService !== null) {
             $emailSecurity = $this->runCheck(
                 name: CheckName::EmailSecurity,
-                host: $normalizedHost,
-                callback: fn() => $emailSecurityService->check(host: $normalizedHost),
+                host: $host,
+                callback: fn() => $emailSecurityService->check(host: $host),
                 errors: $errors,
                 retry: $retry,
             );
@@ -253,9 +284,9 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($tlsCipherService !== null) {
             $tlsCipher = $this->runCheck(
                 name: CheckName::TlsCipher,
-                host: $normalizedHost,
+                host: $host,
                 callback: fn() => $tlsCipherService->check(
-                    host: $normalizedHost,
+                    host: $host,
                     port: $options->port,
                     timeoutSeconds: $options->timeoutSeconds,
                 ),
@@ -270,7 +301,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         if ($response !== null && $cookieSecurityService !== null) {
             $cookieSecurity = $this->runCheck(
                 name: CheckName::CookieSecurity,
-                host: $normalizedHost,
+                host: $host,
                 callback: fn() => $cookieSecurityService->check(response: $response),
                 errors: $errors,
                 retry: $retry,
@@ -278,7 +309,7 @@ final readonly class DomainMonitor implements DomainMonitorInterface
         }
 
         return new DomainHealthReport(
-            host: $normalizedHost,
+            host: $host,
             probe: $probe,
             ssl: $ssl,
             whois: $whois,

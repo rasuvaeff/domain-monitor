@@ -20,6 +20,8 @@ composer require rasuvaeff/domain-monitor
 - Read the report via `getChecks()` (`list<CheckResult>` with `reason`) / `getCheck(CheckName)`; `getStatus()` is the aggregate.
 - Thresholds: `ReportThresholds` (opt-in via `DomainMonitorOptions`) makes SSL "expiring soon" and the WHOIS window configurable; `default()` = legacy behaviour.
 - Retry: `DomainMonitorOptions::retry` accepts a `Rasuvaeff\Retry\Retry` policy (suggest `rasuvaeff/retry`); `null` = single attempt (legacy). On exhaustion the `RetryExhausted` message becomes that check's `CheckError`; probe exhaustion = probe failure (`status: 0`).
+- Circuit breaker: `DomainMonitorOptions::circuitBreaker` accepts a `Rasuvaeff\CircuitBreaker\CircuitBreaker`; the whole check run is wrapped. `check()` never throws — classify the returned `DomainHealthReport` via `BreakerConfig::classifyResult` (e.g. CRITICAL = `Outcome::Failure`). Rejected calls skip all services and return a report with a single `CheckError` (probe, "Circuit ... is open"). Per-host registry (host => breaker) is the caller's concern.
+- Typed timeouts: `DomainMonitorOptions`/`HttpProbeOptions` accept `timeout: ?Rasuvaeff\Duration\Duration`, which takes precedence over `timeoutSeconds: float`; the resolved value is exposed as `timeoutSeconds` for services.
 - Every result DTO is `JsonSerializable`: `json_encode($report)` — dates ISO-8601, enums as values, disabled checks `null`.
 
 ## API reference

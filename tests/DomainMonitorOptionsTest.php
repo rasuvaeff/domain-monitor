@@ -6,6 +6,7 @@ namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
+use Rasuvaeff\Duration\Duration;
 use Rasuvaeff\Retry\Retry;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -29,6 +30,35 @@ final class DomainMonitorOptionsTest
         Assert::null($options->requiredText);
         Assert::null($options->forbiddenText);
         Assert::null($options->retry);
+        Assert::null($options->circuitBreaker);
+        Assert::null($options->timeout);
+    }
+
+    public function timeoutDurationTakesPrecedenceOverFloat(): void
+    {
+        $options = new DomainMonitorOptions(
+            timeoutSeconds: 30.0,
+            timeout: Duration::seconds(2),
+        );
+
+        Assert::same($options->timeoutSeconds, 2.0);
+    }
+
+    public function timeoutDurationAcceptsSubSecondValues(): void
+    {
+        $options = new DomainMonitorOptions(timeout: Duration::millis(500));
+
+        Assert::same($options->timeoutSeconds, 0.5);
+    }
+
+    public function zeroTimeoutDurationThrows(): void
+    {
+        try {
+            new DomainMonitorOptions(timeout: Duration::zero());
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Timeout must be greater than 0');
+        }
     }
 
     public function uppercasesHttpMethod(): void

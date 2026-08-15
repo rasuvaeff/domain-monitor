@@ -23,7 +23,7 @@ A modular domain monitoring toolkit for PHP 8.3+. Zero-framework, PSR-compatible
 - `ext-openssl`, `ext-simplexml`
 - A PSR-18 client and PSR-17 request factory for HTTP-based checks
 - `io-developer/php-whois` (pulls `ext-curl`, `ext-mbstring`)
-- `rasuvaeff/retry` (installed automatically; used only when `DomainMonitorOptions::retry` is set)
+- `rasuvaeff/retry`, `rasuvaeff/circuit-breaker`, `rasuvaeff/duration` (installed automatically; used only when the corresponding `DomainMonitorOptions` knobs are set)
 - `ext-intl` is optional (IDN normalization only)
 - `ext-sockets` is optional (DNS resolution only)
 
@@ -225,6 +225,56 @@ $report = $monitor->check(
 - Each check retries independently; when the policy is exhausted, the `RetryExhausted` message (carrying the attempt count and the last error) becomes that check's `CheckError`.
 - Probe exhaustion is treated like a probe failure: `status: 0`, and response-dependent checks (security headers, cookie audit, content-from-response) are skipped.
 - Non-retryable exceptions are rethrown as-is and land in `getErrors()` exactly as before.
+
+### Circuit breaker
+
+A hard-down host (dead DNS, refused connections) still gets a full check run — every service fires and burns its timeout. Wrap the whole run in a [`rasuvaeff/circuit-breaker`](https://github.com/rasuvaeff/circuit-breaker) policy:
+
+```php
+use Rasuvaeff\CircuitBreaker\BreakerConfig;
+use Rasuvaeff\CircuitBreaker\CircuitBreaker;
+use Rasuvaeff\CircuitBreaker\InMemoryStorage;
+use Rasuvaeff\CircuitBreaker\Outcome;
+use Rasuvaeff\CircuitBreaker\Ratio;
+use Rasuvaeff\Duration\Duration;
+
+$breaker = new CircuitBreaker(
+    config: new BreakerConfig(
+        name: 'domain-monitor:example.com',
+        failureThreshold: Ratio::of(failures: 3, window: 5, within: Duration::seconds(60)),
+        cooldown: Duration::seconds(60),
+        successThreshold: 1,
+        isFailure: fn(\Throwable $e): bool => true,
+        classifyResult: fn(mixed $result): Outcome => $result instanceof DomainHealthReport && $result->getStatus() === CheckStatus::CRITICAL
+            ? Outcome::Failure
+            : Outcome::Success,
+    ),
+    storage: new InMemoryStorage(),
+);
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(circuitBreaker: $breaker),
+);
+```
+
+- `DomainMonitor::check()` never throws, so the breaker observes outcomes via `classifyResult`: classify the returned `DomainHealthReport` (e.g. `CRITICAL` = failure) with your own thresholds.
+- When the circuit opens, further calls skip **all** services and return a report with a single `CheckError` (probe, "Circuit ... is open, retry after ...").
+- **Per-host:** a breaker carries one name — keep a registry (`host => CircuitBreaker`) in the caller and pass the right breaker per `check()` call.
+
+### Typed timeouts
+
+`rasuvaeff/duration` is installed automatically. Both `DomainMonitorOptions` and `HttpProbeOptions` accept `timeout: ?Duration`, which takes precedence over the legacy `timeoutSeconds: float` (both stay — replacing the float is a 2.0 decision):
+
+```php
+use Rasuvaeff\Duration\Duration;
+
+$options = new DomainMonitorOptions(
+    timeout: Duration::seconds(15),       // wins over timeoutSeconds
+    timeoutSeconds: 10.0,                 // ignored when timeout is set
+);
+Assert::same($options->timeoutSeconds, 15.0); // resolved value, single source for services
+```
 
 ### Serialization
 
@@ -472,7 +522,7 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `DomainMonitor` | Orchestrator: runs all configured services, reuses HTTP response for probe + security headers + content → `DomainHealthReport`; `create()` factory + implements `DomainMonitorInterface` |
 | `DomainMonitorInterface` | Contract for `DomainMonitor` — mock/decorate it |
 | `DomainMonitorBuilder` | Fluent, granular composition of the orchestrator (`withHttp`, `withWhois`, `withoutPort`, …) |
-| `DomainMonitorOptions` | VO for orchestrator: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds, retry |
+| `DomainMonitorOptions` | VO for orchestrator: port, timeout (Duration over float), method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds, retry, circuitBreaker |
 | `ReportThresholds` | VO: SSL expiry-warning window (`sslWarnDays`) + WHOIS warning window (`whoisWarnDays`); `default()` / `strict()` |
 | `HostNormalizer` | Normalize hosts/URLs (lowercase, strip scheme/port/path, optional IDN) |
 | `HttpProbeService` | PSR-18 GET/HEAD probe with measured time → `ProbeResult`; `probeWithResponse()` for response reuse |

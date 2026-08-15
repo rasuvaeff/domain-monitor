@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor;
 
 use InvalidArgumentException;
+use Rasuvaeff\CircuitBreaker\CircuitBreaker;
+use Rasuvaeff\Duration\Duration;
 use Rasuvaeff\Retry\Retry;
 
 /**
@@ -17,9 +19,11 @@ final readonly class DomainMonitorOptions
 
     public string $httpMethod;
 
+    public float $timeoutSeconds;
+
     public function __construct(
         public int $port = 443,
-        public float $timeoutSeconds = 10.0,
+        float $timeoutSeconds = 10.0,
         public string $userAgent = self::DEFAULT_USER_AGENT,
         string $httpMethod = 'GET',
         public ?string $expectedOrg = null,
@@ -28,12 +32,20 @@ final readonly class DomainMonitorOptions
         public ?string $forbiddenText = null,
         public ?ReportThresholds $thresholds = null,
         public ?Retry $retry = null,
+        public ?CircuitBreaker $circuitBreaker = null,
+        public ?Duration $timeout = null,
     ) {
         if ($port < 1 || $port > 65535) {
             throw new InvalidArgumentException(message: \sprintf('Invalid port %d', $port));
         }
 
-        if ($timeoutSeconds <= 0) {
+        if ($timeout !== null) {
+            $timeoutSeconds = $timeout->toSeconds();
+        }
+
+        $this->timeoutSeconds = $timeoutSeconds;
+
+        if ($this->timeoutSeconds <= 0) {
             throw new InvalidArgumentException(message: 'Timeout must be greater than 0');
         }
 
