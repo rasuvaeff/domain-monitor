@@ -24,18 +24,18 @@ final readonly class DomainMonitor implements DomainMonitorInterface
 {
     public function __construct(
         private LoggerInterface $logger = new NullLogger(),
-        public ?HttpProbeService $httpProbe = null,
-        public ?SslCertificateService $ssl = null,
-        public ?WhoisService $whois = null,
-        public ?DnsService $dns = null,
-        public ?PortService $port = null,
-        public ?SecurityHeadersService $securityHeaders = null,
-        public ?RobotsTxtService $robotsTxt = null,
-        public ?SitemapService $sitemap = null,
-        public ?HttpContentCheckService $content = null,
-        public ?EmailSecurityService $emailSecurity = null,
-        public ?TlsCipherService $tlsCipher = null,
-        public ?CookieSecurityService $cookieSecurity = null,
+        public ?HttpProbeServiceInterface $httpProbe = null,
+        public ?SslCertificateServiceInterface $ssl = null,
+        public ?WhoisServiceInterface $whois = null,
+        public ?DnsServiceInterface $dns = null,
+        public ?PortServiceInterface $port = null,
+        public ?SecurityHeadersServiceInterface $securityHeaders = null,
+        public ?RobotsTxtServiceInterface $robotsTxt = null,
+        public ?SitemapServiceInterface $sitemap = null,
+        public ?HttpContentCheckServiceInterface $content = null,
+        public ?EmailSecurityServiceInterface $emailSecurity = null,
+        public ?TlsCipherServiceInterface $tlsCipher = null,
+        public ?CookieSecurityServiceInterface $cookieSecurity = null,
     ) {
         if (($securityHeaders !== null || $cookieSecurity !== null) && $httpProbe === null) {
             throw new \InvalidArgumentException(

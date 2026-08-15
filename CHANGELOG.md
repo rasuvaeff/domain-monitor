@@ -11,6 +11,13 @@ Breaking major. See [UPGRADE.md](UPGRADE.md) for step-by-step migration.
   so breaking PRs for this release are gated, not blindly waved through.
 - `UPGRADE.md` added: per-step migration for every breaking change below.
 
+### Per-service interfaces (D2)
+
+- Every service implements a matching `*ServiceInterface`; `DomainMonitor`'s
+  constructor and promoted properties accept the interfaces, so a single check
+  can be swapped/mocked without touching the others.
+- Concrete services keep working as-is (they implement the interfaces).
+
 ### Strict thresholds by default (D3)
 
 - `ReportThresholds` default flips to `sslWarnDays: 30` (was `null`): SSL

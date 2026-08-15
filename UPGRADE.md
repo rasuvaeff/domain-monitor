@@ -32,11 +32,35 @@ new ReportThresholds(sslWarnDays: 60);     // widen it
 
 `ReportThresholds::strict()` (`sslWarnDays: 14`) is unchanged.
 
+## Per-service interfaces (D2)
+
+Every service now implements a matching interface: `HttpProbeServiceInterface`,
+`SslCertificateServiceInterface`, `WhoisServiceInterface`, `DnsServiceInterface`,
+`PortServiceInterface`, `SecurityHeadersServiceInterface`, `RobotsTxtServiceInterface`,
+`SitemapServiceInterface`, `HttpContentCheckServiceInterface`, `EmailSecurityServiceInterface`,
+`TlsCipherServiceInterface`, `CookieSecurityServiceInterface`.
+
+`DomainMonitor`'s constructor (and its promoted public properties) accept the
+interfaces instead of the concrete classes. Swap or mock a single check without
+touching the others:
+
+```php
+$monitor = new DomainMonitor(
+    dns: new class implements DnsServiceInterface {
+        #[\Override]
+        public function check(string $host): DnsRecords { /* ... */ }
+    },
+);
+```
+
+Passing the shipped concrete services keeps working — they implement the
+interfaces. Code that type-hinted the concrete classes in its own signatures
+against `DomainMonitor`'s properties should switch to the interfaces.
+
 ## TODO: sections
 
 The following sections are added by their respective pull requests into the
 `2.0` branch:
 
-- [ ] Per-service interfaces (D2)
 - [ ] Result-typed report slots (D1)
 - [ ] Time budget and batch API (E2/E3)
