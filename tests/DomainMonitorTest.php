@@ -73,7 +73,68 @@ final class DomainMonitorTest
 
         $report = $monitor->check(host: 'example.com');
 
-        Assert::same($report->dns?->unwrap()?->a, ['9.9.9.9']);
+        Assert::same($report->dns?->unwrap()->a, ['9.9.9.9']);
+    }
+
+    public function exhaustedBudgetSkipsChecksAsErrSlots(): void
+    {
+        $connectorCalls = 0;
+        $connector = static function () use (&$connectorCalls): array {
+            $connectorCalls++;
+
+            return ['success' => true, 'connectTime' => 0.01, 'error' => null];
+        };
+
+        $monitor = new DomainMonitor(
+            port: new PortService(connector: $connector),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(maxDuration: Duration::zero()),
+        );
+
+        Assert::same($connectorCalls, 0);
+        Assert::true($report->port?->isErr() ?? false);
+
+        $errors = $report->getErrors();
+
+        Assert::count($errors, 1);
+        Assert::same($errors[0]->check, CheckName::Port);
+        Assert::same($errors[0]->message, 'Time budget exceeded');
+        Assert::same($report->getStatus(), CheckStatus::UNKNOWN);
+    }
+
+    public function generousBudgetRunsAllChecks(): void
+    {
+        $monitor = new DomainMonitor(
+            port: new PortService(connector: static fn(): array => ['success' => true, 'connectTime' => 0.01, 'error' => null]),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(maxDuration: Duration::seconds(60)),
+        );
+
+        Assert::true($report->port?->isOk() ?? false);
+        Assert::same($report->port->unwrap()->status, CheckStatus::OK);
+        Assert::false($report->hasErrors());
+    }
+
+    public function checkManyReturnsReportsKeyedByNormalizedHost(): void
+    {
+        $monitor = new DomainMonitor(dns: new StubDnsService());
+
+        $reports = $monitor->checkMany(
+            hosts: ['https://EXAMPLE.com/path', 'example.org'],
+            options: new DomainMonitorOptions(maxDuration: Duration::seconds(60)),
+        );
+
+        Assert::count($reports, 2);
+        Assert::same(\array_keys($reports), ['example.com', 'example.org']);
+        Assert::instanceOf($reports['example.com'], DomainHealthReport::class);
+        Assert::same($reports['example.org']->dns?->unwrap()->a, ['9.9.9.9']);
+        Assert::same($reports['example.com']->host, 'example.com');
     }
 
     public function throwsWhenSecurityHeadersConfiguredWithoutHttpProbe(): void
