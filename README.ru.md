@@ -298,16 +298,16 @@ $report = $monitor->check(
 ### Типизированные таймауты
 
 `rasuvaeff/duration` ставится автоматически. И `DomainMonitorOptions`, и
-`HttpProbeOptions` принимают `timeout: ?Duration`, который имеет приоритет над
-legacy `timeoutSeconds: float` (оба остаются — замена float — решение 2.0):
+`HttpProbeOptions` принимают типизированный таймаут через
+`withTimeout(Duration)`, который перекрывает конструкторский
+`timeoutSeconds: float` (оба остаются — замена float — решение 2.0):
 
 ```php
 use Rasuvaeff\Duration\Duration;
 
-$options = new DomainMonitorOptions(
-    timeout: Duration::seconds(15),       // побеждает timeoutSeconds
-    timeoutSeconds: 10.0,                 // игнорируется при заданном timeout
-);
+$options = (new DomainMonitorOptions())
+    ->withTimeout(Duration::seconds(15));
+
 Assert::same($options->timeoutSeconds, 15.0); // вычисленное значение — единый источник для сервисов
 ```
 

@@ -17,15 +17,13 @@ final readonly class HttpProbeOptions
 
     public string $method;
 
-    public float $timeoutSeconds;
-
     /**
      * @param array<string, string> $headers
      */
     public function __construct(
         string $method = 'GET',
         public array $headers = [],
-        float $timeoutSeconds = 5.0,
+        public float $timeoutSeconds = 5.0,
         public string $userAgent = self::DEFAULT_USER_AGENT,
         public ?Duration $timeout = null,
     ) {
@@ -35,13 +33,11 @@ final readonly class HttpProbeOptions
             throw new InvalidArgumentException(message: \sprintf('Invalid HTTP method "%s"', $method));
         }
 
-        if ($timeout !== null) {
-            $timeoutSeconds = $timeout->toSeconds();
+        if ($timeoutSeconds <= 0) {
+            throw new InvalidArgumentException(message: 'Timeout must be greater than 0');
         }
 
-        $this->timeoutSeconds = $timeoutSeconds;
-
-        if ($this->timeoutSeconds <= 0) {
+        if ($timeout !== null && $timeout->toSeconds() <= 0) {
             throw new InvalidArgumentException(message: 'Timeout must be greater than 0');
         }
 
@@ -54,5 +50,16 @@ final readonly class HttpProbeOptions
         if ($userAgent === '') {
             throw new InvalidArgumentException(message: 'User-Agent must not be empty');
         }
+    }
+
+    public function withTimeout(Duration $timeout): self
+    {
+        return new self(
+            method: $this->method,
+            headers: $this->headers,
+            timeoutSeconds: $timeout->toSeconds(),
+            userAgent: $this->userAgent,
+            timeout: $timeout,
+        );
     }
 }

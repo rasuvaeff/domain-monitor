@@ -49,10 +49,9 @@ $monitor = new DomainMonitor(
 foreach (range(1, 3) as $round) {
     $report = $monitor->check(
         host: $host,
-        options: new DomainMonitorOptions(
+        options: (new DomainMonitorOptions(
             circuitBreaker: $breakerFor($host),
-            timeout: Duration::seconds(5),
-        ),
+        ))->withTimeout(Duration::seconds(5)),
     );
 
     echo "Round {$round}: {$report->getStatus()->value}\n";

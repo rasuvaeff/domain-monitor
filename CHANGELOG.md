@@ -16,10 +16,10 @@
 ### Typed timeouts (roadmap B3)
 
 - `rasuvaeff/duration` is now a runtime dependency.
-- `DomainMonitorOptions` and `HttpProbeOptions` accept `timeout: ?Duration`,
-  which takes precedence over the legacy `timeoutSeconds: float` param; the
-  resolved value is exposed as the same `timeoutSeconds` property the services
-  already consume. Replacing the float params is deferred to 2.0.
+- `DomainMonitorOptions` and `HttpProbeOptions` get `withTimeout(Duration): self`,
+  which overrides the constructor's `timeoutSeconds: float`; the resolved value
+  is exposed as the same `timeoutSeconds` property the services already consume.
+  Replacing the float params is deferred to 2.0.
 
 ### Retries (roadmap B1)
 

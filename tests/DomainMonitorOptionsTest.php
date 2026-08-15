@@ -34,27 +34,42 @@ final class DomainMonitorOptionsTest
         Assert::null($options->timeout);
     }
 
-    public function timeoutDurationTakesPrecedenceOverFloat(): void
+    public function withTimeoutResolvesSecondsFromDuration(): void
     {
-        $options = new DomainMonitorOptions(
-            timeoutSeconds: 30.0,
-            timeout: Duration::seconds(2),
-        );
+        $options = (new DomainMonitorOptions(timeoutSeconds: 30.0))
+            ->withTimeout(Duration::seconds(2));
 
         Assert::same($options->timeoutSeconds, 2.0);
+        Assert::notNull($options->timeout);
     }
 
-    public function timeoutDurationAcceptsSubSecondValues(): void
+    public function withTimeoutAcceptsSubSecondValues(): void
     {
-        $options = new DomainMonitorOptions(timeout: Duration::millis(500));
+        $options = (new DomainMonitorOptions())->withTimeout(Duration::millis(500));
 
         Assert::same($options->timeoutSeconds, 0.5);
+    }
+
+    public function withTimeoutPreservesSiblingOptions(): void
+    {
+        $options = (new DomainMonitorOptions(
+            port: 8443,
+            userAgent: 'monitor/2.0',
+            httpMethod: 'HEAD',
+            requiredText: 'healthy',
+        ))->withTimeout(Duration::seconds(15));
+
+        Assert::same($options->port, 8443);
+        Assert::same($options->userAgent, 'monitor/2.0');
+        Assert::same($options->httpMethod, 'HEAD');
+        Assert::same($options->requiredText, 'healthy');
+        Assert::same($options->timeoutSeconds, 15.0);
     }
 
     public function zeroTimeoutDurationThrows(): void
     {
         try {
-            new DomainMonitorOptions(timeout: Duration::zero());
+            (new DomainMonitorOptions())->withTimeout(Duration::zero());
             Assert::fail('Expected InvalidArgumentException');
         } catch (InvalidArgumentException $e) {
             Assert::string($e->getMessage())->contains('Timeout must be greater than 0');
