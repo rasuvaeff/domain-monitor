@@ -29,7 +29,7 @@ stateless-сервисами. Каждый чекер делает одну ве
 - `ext-openssl`, `ext-simplexml`
 - PSR-18 клиент и PSR-17 request factory для HTTP-проверок
 - `io-developer/php-whois` (тянет `ext-curl`, `ext-mbstring`)
-- `rasuvaeff/retry` (ставится автоматически; используется только при заданном `DomainMonitorOptions::retry`)
+- `rasuvaeff/retry`, `rasuvaeff/circuit-breaker`, `rasuvaeff/duration` (ставятся автоматически; используются только при заданных соответствующих опций `DomainMonitorOptions`)
 - `ext-intl` опционально (только для нормализации IDN)
 - `ext-sockets` опционально (только для DNS-резолва)
 
@@ -250,6 +250,66 @@ $report = $monitor->check(
   пропускаются.
 - Неповторяемые исключения пробрасываются как есть и попадают в `getErrors()`
   ровно как раньше.
+
+### Предохранитель (circuit breaker)
+
+Упавший насмерть хост (мёртвый DNS, отказ соединения) всё равно получает полный
+прогон — каждая проверка стреляет и выжигает таймаут. Оберните весь прогон
+политикой [`rasuvaeff/circuit-breaker`](https://github.com/rasuvaeff/circuit-breaker):
+
+```php
+use Rasuvaeff\CircuitBreaker\BreakerConfig;
+use Rasuvaeff\CircuitBreaker\CircuitBreaker;
+use Rasuvaeff\CircuitBreaker\InMemoryStorage;
+use Rasuvaeff\CircuitBreaker\Outcome;
+use Rasuvaeff\CircuitBreaker\Ratio;
+use Rasuvaeff\Duration\Duration;
+
+$breaker = new CircuitBreaker(
+    config: new BreakerConfig(
+        name: 'domain-monitor:example.com',
+        failureThreshold: Ratio::of(failures: 3, window: 5, within: Duration::seconds(60)),
+        cooldown: Duration::seconds(60),
+        successThreshold: 1,
+        isFailure: fn(\Throwable $e): bool => true,
+        classifyResult: fn(mixed $result): Outcome => $result instanceof DomainHealthReport && $result->getStatus() === CheckStatus::CRITICAL
+            ? Outcome::Failure
+            : Outcome::Success,
+    ),
+    storage: new InMemoryStorage(),
+);
+
+$report = $monitor->check(
+    host: 'example.com',
+    options: new DomainMonitorOptions(circuitBreaker: $breaker),
+);
+```
+
+- `DomainMonitor::check()` никогда не бросает, поэтому breaker наблюдает
+  результаты через `classifyResult`: классифицируйте возвращённый
+  `DomainHealthReport` (например, `CRITICAL` = failure) со своими порогами.
+- Когда цепь разомкнута, дальнейшие вызовы пропускают **все** сервисы и
+  возвращают репорт с единственным `CheckError` (probe, «Circuit ... is open,
+  retry after ...»).
+- **Per-host:** breaker несёт одно имя — держите реестр
+  (`host => CircuitBreaker`) на вызывающей стороне и передавайте нужный breaker
+  на каждый `check()`.
+
+### Типизированные таймауты
+
+`rasuvaeff/duration` ставится автоматически. И `DomainMonitorOptions`, и
+`HttpProbeOptions` принимают `timeout: ?Duration`, который имеет приоритет над
+legacy `timeoutSeconds: float` (оба остаются — замена float — решение 2.0):
+
+```php
+use Rasuvaeff\Duration\Duration;
+
+$options = new DomainMonitorOptions(
+    timeout: Duration::seconds(15),       // побеждает timeoutSeconds
+    timeoutSeconds: 10.0,                 // игнорируется при заданном timeout
+);
+Assert::same($options->timeoutSeconds, 15.0); // вычисленное значение — единый источник для сервисов
+```
 
 ### Сериализация
 
@@ -514,7 +574,7 @@ echo $report->getStatus()->value; // 'ok' | 'warning' | 'critical' | 'unknown'
 | `DomainMonitor` | Оркестратор: запускает все настроенные сервисы, переиспользует HTTP-ответ для пробы + заголовков безопасности + контента → `DomainHealthReport`; фабрика `create()` + реализует `DomainMonitorInterface` |
 | `DomainMonitorInterface` | Контракт для `DomainMonitor` — мокать/декорировать |
 | `DomainMonitorBuilder` | Fluent-сборка оркестратора с гранулярным контролем (`withHttp`, `withWhois`, `withoutPort`, …) |
-| `DomainMonitorOptions` | VO для оркестратора: port, timeout, method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds, retry |
+| `DomainMonitorOptions` | VO для оркестратора: port, timeout (Duration поверх float), method, userAgent, expectedOrg, expectedStatus, requiredText, forbiddenText, thresholds, retry, circuitBreaker |
 | `ReportThresholds` | VO: окно предупреждения об истечении SSL (`sslWarnDays`) + окно предупреждения WHOIS (`whoisWarnDays`); `default()` / `strict()` |
 | `HostNormalizer` | Нормализация хостов/URL-ов (lowercase, strip scheme/port/path, опционально IDN) |
 | `HttpProbeService` | PSR-18 GET/HEAD-проба с замером времени → `ProbeResult`; `probeWithResponse()` для переиспользования ответа |

@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
+use Rasuvaeff\CircuitBreaker\BreakerConfig;
+use Rasuvaeff\CircuitBreaker\CircuitBreaker;
+use Rasuvaeff\CircuitBreaker\Clock\SystemClock;
+use Rasuvaeff\CircuitBreaker\InMemoryStorage;
+use Rasuvaeff\CircuitBreaker\Outcome;
+use Rasuvaeff\CircuitBreaker\Ratio;
 use Rasuvaeff\DomainMonitor\CheckName;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\DnsService;
@@ -26,6 +32,7 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FlakyHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Rasuvaeff\Duration\Duration;
 use Rasuvaeff\Retry\Retry;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -392,6 +399,105 @@ final class DomainMonitorTest
         Assert::count($logger->records, 1);
         Assert::same($logger->records[0]['message'], 'HTTP probe failed');
         Assert::string($logger->records[0]['context']['error'])->contains('Retry exhausted after 2 attempt(s)');
+    }
+
+    public function circuitBreakerAdmittedRunReturnsReport(): void
+    {
+        $client = new FlakyHttpClient(
+            failures: 100,
+            response: new FakeResponse(statusCode: 200),
+        );
+        $monitor = new DomainMonitor(
+            httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
+        );
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(circuitBreaker: $this->breaker()),
+        );
+
+        Assert::same($client->calls, 1);
+        Assert::notNull($report->probe);
+        Assert::same($report->probe->status, 0);
+        Assert::same($report->getStatus(), CheckStatus::CRITICAL);
+    }
+
+    public function circuitBreakerRejectionSkipsAllChecksAndRecordsError(): void
+    {
+        $client = new FlakyHttpClient(
+            failures: 100,
+            response: new FakeResponse(statusCode: 200),
+        );
+        $logger = new RecordingLogger();
+        $breaker = $this->breaker();
+        $monitor = new DomainMonitor(
+            logger: $logger,
+            httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
+        );
+        $thresholds = new ReportThresholds(sslWarnDays: 7);
+        $options = new DomainMonitorOptions(
+            thresholds: $thresholds,
+            circuitBreaker: $breaker,
+        );
+
+        $first = $monitor->check(host: 'example.com', options: $options);
+        $rejected = $monitor->check(host: 'example.com', options: $options);
+
+        Assert::same($client->calls, 1);
+        Assert::same($first->getStatus(), CheckStatus::CRITICAL);
+
+        Assert::same($rejected->host, 'example.com');
+        Assert::true($rejected->hasErrors());
+
+        $errors = $rejected->getErrors();
+
+        Assert::count($errors, 1);
+        Assert::same($errors[0]->check, CheckName::Probe);
+        Assert::string($errors[0]->message)->contains('Circuit "domain-monitor" is open');
+        Assert::same($rejected->thresholds, $thresholds);
+
+        Assert::count($logger->records, 2);
+        Assert::same($logger->records[1]['message'], 'Domain check rejected by circuit breaker');
+        Assert::same($logger->records[1]['context']['host'], 'example.com');
+    }
+
+    public function circuitBreakerStaysClosedWhenChecksSucceed(): void
+    {
+        $client = new FlakyHttpClient(
+            failures: 0,
+            response: new FakeResponse(statusCode: 200),
+        );
+        $breaker = $this->breaker();
+        $monitor = new DomainMonitor(
+            httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
+        );
+        $options = new DomainMonitorOptions(circuitBreaker: $breaker);
+
+        $first = $monitor->check(host: 'example.com', options: $options);
+        $second = $monitor->check(host: 'example.com', options: $options);
+
+        Assert::same($client->calls, 2);
+        Assert::same($first->getStatus(), CheckStatus::OK);
+        Assert::same($second->getStatus(), CheckStatus::OK);
+        Assert::false($second->hasErrors());
+    }
+
+    private function breaker(): CircuitBreaker
+    {
+        return new CircuitBreaker(
+            config: new BreakerConfig(
+                name: 'domain-monitor',
+                failureThreshold: Ratio::of(failures: 1, window: 1, within: Duration::seconds(60)),
+                cooldown: Duration::seconds(30),
+                successThreshold: 1,
+                isFailure: static fn(\Throwable $exception): bool => true,
+                classifyResult: static fn(mixed $result): Outcome => $result instanceof DomainHealthReport && $result->getStatus() === CheckStatus::CRITICAL
+                    ? Outcome::Failure
+                    : Outcome::Success,
+            ),
+            storage: new InMemoryStorage(),
+            clock: new SystemClock(),
+        );
     }
 
     public function failedCheckIsRecordedAsCheckError(): void

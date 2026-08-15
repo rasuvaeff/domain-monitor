@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor;
 
 use InvalidArgumentException;
+use Rasuvaeff\Duration\Duration;
 
 /**
  * @api
@@ -16,14 +17,17 @@ final readonly class HttpProbeOptions
 
     public string $method;
 
+    public float $timeoutSeconds;
+
     /**
      * @param array<string, string> $headers
      */
     public function __construct(
         string $method = 'GET',
         public array $headers = [],
-        public float $timeoutSeconds = 5.0,
+        float $timeoutSeconds = 5.0,
         public string $userAgent = self::DEFAULT_USER_AGENT,
+        public ?Duration $timeout = null,
     ) {
         $this->method = \strtoupper($method);
 
@@ -31,7 +35,13 @@ final readonly class HttpProbeOptions
             throw new InvalidArgumentException(message: \sprintf('Invalid HTTP method "%s"', $method));
         }
 
-        if ($timeoutSeconds <= 0) {
+        if ($timeout !== null) {
+            $timeoutSeconds = $timeout->toSeconds();
+        }
+
+        $this->timeoutSeconds = $timeoutSeconds;
+
+        if ($this->timeoutSeconds <= 0) {
             throw new InvalidArgumentException(message: 'Timeout must be greater than 0');
         }
 

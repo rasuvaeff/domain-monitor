@@ -6,6 +6,7 @@ namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
 use Rasuvaeff\DomainMonitor\HttpProbeOptions;
+use Rasuvaeff\Duration\Duration;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
@@ -22,6 +23,27 @@ final class HttpProbeOptionsTest
         Assert::same($options->headers, []);
         Assert::same($options->timeoutSeconds, 5.0);
         Assert::same($options->userAgent, 'rasuvaeff/domain-monitor');
+        Assert::null($options->timeout);
+    }
+
+    public function timeoutDurationTakesPrecedenceOverFloat(): void
+    {
+        $options = new HttpProbeOptions(
+            timeoutSeconds: 30.0,
+            timeout: Duration::seconds(2),
+        );
+
+        Assert::same($options->timeoutSeconds, 2.0);
+    }
+
+    public function zeroTimeoutDurationThrows(): void
+    {
+        try {
+            new HttpProbeOptions(timeout: Duration::zero());
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            Assert::string($e->getMessage())->contains('Timeout must be greater than 0');
+        }
     }
 
     public function preservesCustomValues(): void
