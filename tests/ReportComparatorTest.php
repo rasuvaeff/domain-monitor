@@ -8,17 +8,15 @@ use DateTimeImmutable;
 use Rasuvaeff\DomainMonitor\CheckError;
 use Rasuvaeff\DomainMonitor\CheckName;
 use Rasuvaeff\DomainMonitor\CheckStatus;
-use Rasuvaeff\DomainMonitor\DnsRecords;
 use Rasuvaeff\DomainMonitor\DomainHealthReport;
 use Rasuvaeff\DomainMonitor\ProbeResult;
 use Rasuvaeff\DomainMonitor\ReportComparator;
 use Rasuvaeff\DomainMonitor\ReportDiff;
 use Rasuvaeff\DomainMonitor\StatusTransition;
+use Rasuvaeff\DomainMonitor\Tests\Fixtures\ReportGenerators;
 use Rasuvaeff\DomainMonitor\TldInfo;
 use Rasuvaeff\DomainMonitor\TransitionKind;
-use Rasuvaeff\PropertyTesting\ArbitraryInterface;
 use Rasuvaeff\PropertyTesting\Classify;
-use Rasuvaeff\PropertyTesting\Gen;
 use Rasuvaeff\PropertyTesting\Property;
 use Rasuvaeff\Result\Result;
 use Testo\Assert;
@@ -195,7 +193,8 @@ final class ReportComparatorTest
         ]);
     }
 
-    #[Property(runs: 200)]
+    /** @param int<200, 599> $status */
+    #[Property(runs: 200, auto: true)]
     public function diffOfSameReportIsAlwaysEmpty(int $status): void
     {
         $report = new DomainHealthReport(host: 'example.com', probe: new ProbeResult(status: $status, totalTime: 0.1));
@@ -204,14 +203,10 @@ final class ReportComparatorTest
     }
 
     /**
-     * @return array<string, ArbitraryInterface>
+     * @param int<200, 599> $fromStatus
+     * @param int<200, 599> $toStatus
      */
-    public static function diffOfSameReportIsAlwaysEmptyGenerators(): array
-    {
-        return ['status' => Gen::intBetween(200, 599)];
-    }
-
-    #[Property(runs: 200)]
+    #[Property(runs: 200, auto: true)]
     public function degradeAndRecoverAreSymmetric(int $fromStatus, int $toStatus): void
     {
         $comparator = new ReportComparator();
@@ -245,32 +240,13 @@ final class ReportComparatorTest
         Assert::same($backward[0]->kind, $degradedForward ? TransitionKind::Recovered : TransitionKind::Degraded);
     }
 
-    /**
-     * @return array<string, ArbitraryInterface>
-     */
-    public static function degradeAndRecoverAreSymmetricGenerators(): array
-    {
-        return [
-            'fromStatus' => Gen::intBetween(200, 599),
-            'toStatus' => Gen::intBetween(200, 599),
-        ];
-    }
-
-    #[Property(runs: 200)]
+    #[Property(runs: 200, generators: [ReportGenerators::class, 'single'])]
     public function diffOfArbitraryReportWithItselfIsEmpty(DomainHealthReport $report): void
     {
         Assert::same($this->comparator->diff(previous: $report, current: $report), []);
     }
 
-    /**
-     * @return array<string, ArbitraryInterface>
-     */
-    public static function diffOfArbitraryReportWithItselfIsEmptyGenerators(): array
-    {
-        return ['report' => self::reportGenerator()];
-    }
-
-    #[Property(runs: 200)]
+    #[Property(runs: 200, generators: [ReportGenerators::class, 'pair'])]
     public function forwardAndBackwardTransitionsAreInverse(DomainHealthReport $previous, DomainHealthReport $current): void
     {
         $forward = $this->comparator->diff(previous: $previous, current: $current);
@@ -299,18 +275,7 @@ final class ReportComparatorTest
         }
     }
 
-    /**
-     * @return array<string, ArbitraryInterface>
-     */
-    public static function forwardAndBackwardTransitionsAreInverseGenerators(): array
-    {
-        return [
-            'previous' => self::reportGenerator(),
-            'current' => self::reportGenerator(),
-        ];
-    }
-
-    #[Property(runs: 200)]
+    #[Property(runs: 200, generators: [ReportGenerators::class, 'pair'])]
     public function worstTransitionCarriesMaxSeverity(DomainHealthReport $previous, DomainHealthReport $current): void
     {
         $diff = $this->comparator->compare(previous: $previous, current: $current);
@@ -346,17 +311,6 @@ final class ReportComparatorTest
         Assert::same($worst->to?->severity() ?? -1, $maxRank);
     }
 
-    /**
-     * @return array<string, ArbitraryInterface>
-     */
-    public static function worstTransitionCarriesMaxSeverityGenerators(): array
-    {
-        return [
-            'previous' => self::reportGenerator(),
-            'current' => self::reportGenerator(),
-        ];
-    }
-
     private function singleTransition(int $previousStatus, int $currentStatus): StatusTransition
     {
         $transitions = $this->comparator->diff(
@@ -387,39 +341,4 @@ final class ReportComparatorTest
         return new TldInfo(domain: 'example.com');
     }
 
-    /**
-     * Builds a DomainHealthReport from a random subset of checks (probe / whois
-     * / dns), each independently drawn from representative statuses spanning
-     * OK / WARNING / CRITICAL / UNKNOWN / absent. Exercises the comparator over
-     * the full reachable state space without coupling to any single check.
-     */
-    private static function reportGenerator(): ArbitraryInterface
-    {
-        $probe = Gen::nullable(Gen::oneOf(
-            new ProbeResult(status: 200, totalTime: 0.1),
-            new ProbeResult(status: 404, totalTime: 0.1),
-            new ProbeResult(status: 500, totalTime: 0.1),
-            new ProbeResult(status: 0, totalTime: 0.1),
-        ));
-        $whois = Gen::nullable(Gen::oneOf(
-            new TldInfo(domain: 'example.com', expirationDate: new DateTimeImmutable(datetime: '+100 days')),
-            new TldInfo(domain: 'example.com', expirationDate: new DateTimeImmutable(datetime: '+10 days')),
-            new TldInfo(domain: 'example.com', expirationDate: new DateTimeImmutable(datetime: '-1 day')),
-            new TldInfo(domain: 'example.com'),
-        ));
-        $dns = Gen::nullable(Gen::oneOf(
-            new DnsRecords(a: ['192.0.2.1']),
-            new DnsRecords(),
-        ));
-
-        return Gen::map(
-            Gen::tuple($probe, $whois, $dns),
-            static fn(array $parts): DomainHealthReport => new DomainHealthReport(
-                host: 'example.com',
-                probe: $parts[0],
-                whois: $parts[1],
-                dns: $parts[2],
-            ),
-        );
-    }
 }

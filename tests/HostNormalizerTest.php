@@ -149,7 +149,7 @@ final class HostNormalizerTest
         yield 'non-http scheme' => ['ftp://example.com', 'URL must use http or https scheme: "ftp://example.com"'];
     }
 
-    #[Property(runs: 300)]
+    #[Property(runs: 300, generators: 'hostGenerators')]
     public function normalizeHostIsIdempotent(string $host): void
     {
         $once = $this->normalizer->normalizeHost(hostOrUrl: $host);
@@ -159,13 +159,7 @@ final class HostNormalizerTest
         Assert::same(\strtolower($once), $once);
     }
 
-    /** @return array<string, ArbitraryInterface> */
-    public static function normalizeHostIsIdempotentGenerators(): array
-    {
-        return ['host' => self::hostGenerator()];
-    }
-
-    #[Property(runs: 300)]
+    #[Property(runs: 300, generators: 'hostGenerators')]
     public function normalizeHostIgnoresSchemePortPathAndCase(string $host): void
     {
         $decorated = 'HTTPS://' . \strtoupper($host) . ':8443/Some/Path?q=1#frag';
@@ -173,13 +167,7 @@ final class HostNormalizerTest
         Assert::same($this->normalizer->normalizeHost(hostOrUrl: $decorated), $host);
     }
 
-    /** @return array<string, ArbitraryInterface> */
-    public static function normalizeHostIgnoresSchemePortPathAndCaseGenerators(): array
-    {
-        return ['host' => self::hostGenerator()];
-    }
-
-    #[Property(runs: 300)]
+    #[Property(runs: 300, generators: 'hostGenerators')]
     public function normalizeUrlIsIdempotent(string $host): void
     {
         $url = 'https://' . $host . '/Path?q=1';
@@ -189,13 +177,19 @@ final class HostNormalizerTest
         Assert::same($twice, $once);
     }
 
-    /** @return array<string, ArbitraryInterface> */
-    public static function normalizeUrlIsIdempotentGenerators(): array
+    /**
+     * One provider for the three host-shaped properties above — they draw the
+     * same domain, and the parameter is named `host` in all three signatures.
+     *
+     * @return array<string, ArbitraryInterface>
+     */
+    public static function hostGenerators(): array
     {
         return ['host' => self::hostGenerator()];
     }
 
-    #[Property(runs: 100)]
+    /** @param 'xn--e1aybc.xn--p1ai'|'xn--80akhbyknj4f.com'|'xn--mnchen-3ya.de'|'xn--bcher-kva.de' $asciiHost */
+    #[Property(runs: 100, auto: true)]
     public function normalizeHostRoundtripsIdn(string $asciiHost): void
     {
         if (!\function_exists('idn_to_utf8')) {
@@ -207,19 +201,6 @@ final class HostNormalizerTest
 
         Assert::true(\is_string(value: $utf8));
         Assert::same($this->normalizer->normalizeHost(hostOrUrl: $utf8), $normalizedAscii);
-    }
-
-    /** @return array<string, ArbitraryInterface> */
-    public static function normalizeHostRoundtripsIdnGenerators(): array
-    {
-        return [
-            'asciiHost' => Gen::oneOf(
-                'xn--e1aybc.xn--p1ai',
-                'xn--80akhbyknj4f.com',
-                'xn--mnchen-3ya.de',
-                'xn--bcher-kva.de',
-            ),
-        ];
     }
 
     /**

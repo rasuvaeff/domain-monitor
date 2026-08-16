@@ -122,7 +122,8 @@ final class SslCertificateTest
         Assert::true($future->daysUntilExpiry() > 0);
     }
 
-    #[Property(runs: 200)]
+    /** @param int<0, 365> $validUntilDays */
+    #[Property(runs: 200, auto: true)]
     public function isExpiredIsMonotonicByNow(int $validUntilDays, array $nowSpan): void
     {
         [$now1Days, $now2Days] = $nowSpan;
@@ -142,12 +143,14 @@ final class SslCertificateTest
     }
 
     /**
+     * The ordered pair is what no psalm type can express; the other parameter
+     * derives from its `@param` under `auto`.
+     *
      * @return array<string, ArbitraryInterface>
      */
     public static function isExpiredIsMonotonicByNowGenerators(): array
     {
         return [
-            'validUntilDays' => Gen::intBetween(0, 365),
             'nowSpan' => Gen::intRange(min: 0, max: 365),
         ];
     }
@@ -164,7 +167,11 @@ final class SslCertificateTest
         yield 'both readings after expiry' => [1, [2, 300]];
     }
 
-    #[Property(runs: 300)]
+    /**
+     * @param int<0, 90> $narrowDays
+     * @param int<0, 275> $extraDays
+     */
+    #[Property(runs: 300, auto: true)]
     public function expiryWindowWidensMonotonicallyAndAlwaysCoversAnExpiredCertificate(
         DateTimeImmutable $validUntil,
         DateTimeImmutable $now,
@@ -200,15 +207,16 @@ final class SslCertificateTest
     {
         // Real dates rather than day offsets from a fixed epoch: an expiry
         // comparison is exactly the place a DST boundary or a timezone-shifted
-        // timestamp turns "valid" into "expired".
+        // timestamp turns "valid" into "expired". Deliberate overrides under
+        // `auto`: the derived Gen::datetime() default would be legal but wider
+        // than the decade the coverage floors were calibrated for; the day
+        // counts derive from their `@param` ranges.
         $from = new DateTimeImmutable(datetime: '2020-01-01T00:00:00+00:00');
         $to = new DateTimeImmutable(datetime: '2030-01-01T00:00:00+00:00');
 
         return [
             'validUntil' => Gen::datetime(min: $from, max: $to),
             'now' => Gen::datetime(min: $from, max: $to),
-            'narrowDays' => Gen::intBetween(0, 90),
-            'extraDays' => Gen::intBetween(0, 275),
         ];
     }
 
