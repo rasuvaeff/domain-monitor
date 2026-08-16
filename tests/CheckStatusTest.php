@@ -33,7 +33,7 @@ final class CheckStatusTest
         Assert::same(CheckStatus::CRITICAL->severity(), 3);
     }
 
-    #[Property(runs: 100)]
+    #[Property(runs: 100, auto: true)]
     public function distinctStatusesHaveDistinctSeverities(CheckStatus $a, CheckStatus $b): void
     {
         // A quarter of the pairs are a status against itself and assert
@@ -45,17 +45,6 @@ final class CheckStatusTest
         if ($a !== $b) {
             Assert::true($a->severity() !== $b->severity());
         }
-    }
-
-    /**
-     * @return array<string, ArbitraryInterface>
-     */
-    public static function distinctStatusesHaveDistinctSeveritiesGenerators(): array
-    {
-        return [
-            'a' => Gen::enum(CheckStatus::class),
-            'b' => Gen::enum(CheckStatus::class),
-        ];
     }
 
     /**
