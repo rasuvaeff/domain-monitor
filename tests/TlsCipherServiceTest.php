@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use Closure;
-use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\TlsCipherService;
-use Stringable;
+use Rasuvaeff\Understudy\Understudy;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
+
+use function Rasuvaeff\Understudy\verify;
 
 #[Test]
 #[Covers(TlsCipherService::class)]
@@ -161,7 +163,7 @@ final class TlsCipherServiceTest
 
     public function logsHandshakeFailureWithHostPortAndError(): void
     {
-        $logger = new RecordingLogger();
+        $logger = Understudy::for(LoggerInterface::class);
 
         $connector = static function (string $host, int $port, float $timeout): array {
             unset($host, $port, $timeout);
@@ -171,13 +173,7 @@ final class TlsCipherServiceTest
 
         (new TlsCipherService(connector: $connector, logger: $logger))->check(host: 'example.com', port: 8443);
 
-        Assert::same($logger->records, [
-            [
-                'level' => 'error',
-                'message' => 'TLS handshake failed',
-                'context' => ['host' => 'example.com', 'port' => 8443, 'error' => 'Connection refused'],
-            ],
-        ]);
+        verify(fn() => $logger->error('TLS handshake failed', ['host' => 'example.com', 'port' => 8443, 'error' => 'Connection refused']));
     }
 
     public function returnsUnknownWhenConnectorReturnsFalse(): void
@@ -254,22 +250,5 @@ final class TlsCipherServiceTest
     private function connector(array $meta): Closure
     {
         return static fn(string $host, int $port, float $timeout): array => $meta;
-    }
-}
-
-final class RecordingLogger extends AbstractLogger
-{
-    /**
-     * @var list<array{level: mixed, message: string, context: array<string, mixed>}>
-     */
-    public array $records = [];
-
-    /**
-     * @param array<string, mixed> $context
-     */
-    #[\Override]
-    public function log(mixed $level, string|Stringable $message, array $context = []): void
-    {
-        $this->records[] = ['level' => $level, 'message' => (string) $message, 'context' => $context];
     }
 }

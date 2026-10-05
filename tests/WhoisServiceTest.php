@@ -8,9 +8,12 @@ use Iodev\Whois\Exceptions\ConnectionException;
 use Iodev\Whois\Exceptions\ServerMismatchException;
 use Iodev\Whois\Exceptions\WhoisException;
 use Iodev\Whois\Modules\Tld\TldInfo as VendorTldInfo;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Iodev\Whois\Whois;
+use Psr\Log\LoggerInterface;
 use Rasuvaeff\DomainMonitor\WhoisService;
+use Rasuvaeff\Understudy\Arg;
+use Rasuvaeff\Understudy\Invocation;
+use Rasuvaeff\Understudy\Understudy;
 use ReflectionClass;
 use ReflectionProperty;
 use Testo\Assert;
@@ -18,6 +21,9 @@ use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
 use Testo\Test;
 use Throwable;
+
+use function Rasuvaeff\Understudy\verify;
+use function Rasuvaeff\Understudy\when;
 
 #[Test]
 #[Covers(WhoisService::class)]
@@ -31,7 +37,7 @@ final class WhoisServiceTest
             'expirationDate' => 1_769_817_600,
             'states' => ['active', 'ok'],
         ]);
-        $whois = $this->fakeWhoisReturning($vendorInfo);
+        $whois = $this->whoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
@@ -46,7 +52,7 @@ final class WhoisServiceTest
     public function defaultsMissingOptionalFields(): void
     {
         $vendorInfo = $this->createVendorInfo(['domainName' => 'example.com']);
-        $whois = $this->fakeWhoisReturning($vendorInfo);
+        $whois = $this->whoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
@@ -63,7 +69,7 @@ final class WhoisServiceTest
             'domainName' => 'example.com',
             'states' => ['ok', '', 42, 'clientHold'],
         ]);
-        $whois = $this->fakeWhoisReturning($vendorInfo);
+        $whois = $this->whoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
@@ -73,24 +79,28 @@ final class WhoisServiceTest
 
     public function returnsNullWhenLookupAndFallbackBothFail(): void
     {
-        $whois = $this->fakeWhoisReturning(null);
+        $whois = $this->whoisReturning(null);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'www.example.com');
 
         Assert::null($result);
-        Assert::same($whois->callCount(), 2);
+        verify(fn() => $whois->loadDomainInfo(Arg::any()), times: 2);
     }
 
     public function retriesWithBaseDomainWhenSubdomainLookupFails(): void
     {
         $vendorInfo = $this->createVendorInfo(['domainName' => 'example.com']);
-        $whois = new FakeWhois(static fn(string $domain): ?VendorTldInfo => $domain === 'example.com' ? $vendorInfo : null);
+        $whois = Understudy::for(Whois::class);
+        when(fn() => $whois->loadDomainInfo(Arg::any()))
+            ->answers(
+                static fn(Invocation $call): ?VendorTldInfo => $call->arg('domain') === 'example.com' ? $vendorInfo : null,
+            );
 
         $result = (new WhoisService(whois: $whois))->check(host: 'a.b.example.com');
 
         Assert::notNull($result);
         Assert::same($result->domain, 'example.com');
-        Assert::same($whois->callCount(), 2);
+        verify(fn() => $whois->loadDomainInfo(Arg::any()), times: 2);
     }
 
     public function usesStatesKeyWhenPresent(): void
@@ -100,7 +110,7 @@ final class WhoisServiceTest
             'states' => ['active'],
             'status' => ['wrong'],
         ]);
-        $whois = $this->fakeWhoisReturning($vendorInfo);
+        $whois = $this->whoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
@@ -114,7 +124,7 @@ final class WhoisServiceTest
             'domainName' => 'example.com',
             'states' => ['active'],
         ]);
-        $whois = $this->fakeWhoisReturning($vendorInfo);
+        $whois = $this->whoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
@@ -128,7 +138,7 @@ final class WhoisServiceTest
             'domainName' => 'example.com',
             'registrar' => '',
         ]);
-        $whois = $this->fakeWhoisReturning($vendorInfo);
+        $whois = $this->whoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
@@ -142,7 +152,7 @@ final class WhoisServiceTest
             'domainName' => 'example.com',
             'expirationDate' => 0,
         ]);
-        $whois = $this->fakeWhoisReturning($vendorInfo);
+        $whois = $this->whoisReturning($vendorInfo);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
@@ -152,26 +162,25 @@ final class WhoisServiceTest
 
     public function returnsNullForShortHostWithoutFallback(): void
     {
-        $whois = $this->fakeWhoisReturning(null);
+        $whois = $this->whoisReturning(null);
 
         $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
 
         Assert::null($result);
-        Assert::same($whois->callCount(), 1);
+        verify(fn() => $whois->loadDomainInfo(Arg::any()), times: 1);
     }
 
     #[DataProvider('caughtExceptionProvider')]
     public function returnsNullAndLogsOnWhoisException(Throwable $exception): void
     {
-        $whois = new FakeWhois(static fn(): ?VendorTldInfo => null, $exception);
-        $logger = new RecordingLogger();
+        $whois = Understudy::for(Whois::class);
+        when(fn() => $whois->loadDomainInfo(Arg::any()))->throws($exception);
+        $logger = Understudy::for(LoggerInterface::class);
 
         $result = (new WhoisService(whois: $whois, logger: $logger))->check(host: 'example.com');
 
         Assert::null($result);
-        Assert::count($logger->records, 1);
-        Assert::same($logger->records[0]['message'], 'boom');
-        Assert::same($logger->records[0]['context'], ['host' => 'example.com']);
+        verify(fn() => $logger->error('boom', ['host' => 'example.com']));
     }
 
     /**
@@ -184,11 +193,13 @@ final class WhoisServiceTest
         yield 'whois' => [new WhoisException(message: 'boom')];
     }
 
-    private function fakeWhoisReturning(?VendorTldInfo $vendorInfo): FakeWhois
+    private function whoisReturning(?VendorTldInfo $vendorInfo): Whois
     {
-        $handler = static fn(): ?VendorTldInfo => $vendorInfo;
+        $whois = Understudy::for(Whois::class);
 
-        return new FakeWhois($handler);
+        when(fn() => $whois->loadDomainInfo(Arg::any()))->returns($vendorInfo);
+
+        return $whois;
     }
 
     /**

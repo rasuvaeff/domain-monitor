@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
+use Psr\Http\Client\ClientExceptionInterface;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Log\LoggerInterface;
 use Rasuvaeff\DomainMonitor\HttpProbeOptions;
 use Rasuvaeff\DomainMonitor\HttpProbeService;
 use Rasuvaeff\DomainMonitor\HttpProbeWithResponse;
@@ -11,20 +15,30 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\ClientExceptionStub;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequest;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Rasuvaeff\Understudy\Arg;
+use Rasuvaeff\Understudy\Captor;
+use Rasuvaeff\Understudy\Understudy;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Expect;
 use Testo\Test;
 
+use function Rasuvaeff\Understudy\verify;
+use function Rasuvaeff\Understudy\when;
+
 #[Test]
 #[Covers(HttpProbeService::class)]
 final class HttpProbeServiceTest
 {
+    private Captor $requests;
+
+    private Captor $errorMessages;
+
+    private Captor $errorContexts;
+
     public function returnsStatusFromResponse(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 204));
+        $client = $this->client(new FakeResponse(statusCode: 204));
 
         $result = (new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(url: 'https://example.com');
@@ -36,33 +50,32 @@ final class HttpProbeServiceTest
 
     public function appliesMethodHeadersAndDefaultUserAgent(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200));
+        $client = $this->client(new FakeResponse(statusCode: 200));
 
         (new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(url: 'https://example.com', options: new HttpProbeOptions(method: 'head', headers: ['X-Test' => '1']));
 
-        Assert::instanceOf($client->lastRequest, FakeRequest::class);
-        Assert::same($client->lastRequest->getMethod(), 'HEAD');
-        Assert::same($client->lastRequest->getUriString(), 'https://example.com/');
-        Assert::same($client->lastRequest->getHeaderLine(name: 'X-Test'), '1');
-        Assert::same($client->lastRequest->getHeaderLine(name: 'User-Agent'), 'rasuvaeff/domain-monitor');
+        $request = $this->requests->last();
+        Assert::same($request->getMethod(), 'HEAD');
+        Assert::same($request->getUriString(), 'https://example.com/');
+        Assert::same($request->getHeaderLine(name: 'X-Test'), '1');
+        Assert::same($request->getHeaderLine(name: 'User-Agent'), 'rasuvaeff/domain-monitor');
     }
 
     public function keepsCustomUserAgentHeaderFromOptions(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200));
+        $client = $this->client(new FakeResponse(statusCode: 200));
 
         (new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(url: 'https://example.com', options: new HttpProbeOptions(headers: ['User-Agent' => 'custom-agent']));
 
-        Assert::notNull($client->lastRequest);
-        Assert::same($client->lastRequest->getHeaderLine(name: 'User-Agent'), 'custom-agent');
+        Assert::same($this->requests->last()->getHeaderLine(name: 'User-Agent'), 'custom-agent');
     }
 
     public function returnsStatusZeroAndLogsOnNetworkFailure(): void
     {
-        $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'down'));
-        $logger = new RecordingLogger();
+        $client = $this->failingClient(new ClientExceptionStub(message: 'down'));
+        $logger = $this->logger();
 
         $result = (new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory(), logger: $logger))
             ->check(url: 'https://example.com');
@@ -70,15 +83,15 @@ final class HttpProbeServiceTest
         Assert::same($result->status, 0);
         Assert::true($result->totalTime >= 0.0);
         Assert::true($result->totalTime < 10.0);
-        Assert::count($logger->records, 1);
-        Assert::same($logger->records[0]['message'], 'down');
-        Assert::same($logger->records[0]['context'], ['url' => 'https://example.com/']);
+        verify(fn() => $logger->error(Arg::any(), Arg::any()), times: 1);
+        Assert::same($this->errorMessages->last(), 'down');
+        Assert::same($this->errorContexts->last(), ['url' => 'https://example.com/']);
     }
 
     public function probeWithResponseReturnsResultAndResponse(): void
     {
         $response = new FakeResponse(statusCode: 200);
-        $client = new RecordingHttpClient(response: $response);
+        $client = $this->client($response);
 
         $result = (new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->probeWithResponse(url: 'https://example.com');
@@ -90,7 +103,7 @@ final class HttpProbeServiceTest
 
     public function probeWithResponseAppliesOptionsAndMeasuresTime(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 204));
+        $client = $this->client(new FakeResponse(statusCode: 204));
 
         $result = (new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->probeWithResponse(
@@ -101,18 +114,48 @@ final class HttpProbeServiceTest
         Assert::same($result->result->status, 204);
         Assert::true($result->result->totalTime >= 0.0);
         Assert::true($result->result->totalTime < 10.0);
-        Assert::instanceOf($client->lastRequest, FakeRequest::class);
-        Assert::same($client->lastRequest->getMethod(), 'HEAD');
-        Assert::same($client->lastRequest->getHeaderLine(name: 'X-Test'), '1');
+        $request = $this->requests->last();
+        Assert::same($request->getMethod(), 'HEAD');
+        Assert::same($request->getHeaderLine(name: 'X-Test'), '1');
     }
 
     public function probeWithResponseThrowsOnNetworkFailure(): void
     {
-        $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'timeout'));
+        $client = Understudy::strict($this->failingClient(new ClientExceptionStub(message: 'timeout')));
 
         Expect::exception(ClientExceptionStub::class);
 
         (new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->probeWithResponse(url: 'https://example.com');
+    }
+
+    private function client(ResponseInterface $response): ClientInterface
+    {
+        $client = Understudy::for(ClientInterface::class);
+        $this->requests = Arg::captor(FakeRequest::class);
+
+        when(fn() => $client->sendRequest($this->requests->capture()))->returns($response);
+
+        return $client;
+    }
+
+    private function failingClient(ClientExceptionInterface $exception): ClientInterface
+    {
+        $client = Understudy::for(ClientInterface::class);
+
+        when(fn() => $client->sendRequest(Arg::any()))->throws($exception);
+
+        return $client;
+    }
+
+    private function logger(): LoggerInterface
+    {
+        $logger = Understudy::for(LoggerInterface::class);
+        $this->errorMessages = Arg::captor();
+        $this->errorContexts = Arg::captor();
+
+        when(fn() => $logger->error($this->errorMessages->capture(), $this->errorContexts->capture()));
+
+        return $logger;
     }
 }

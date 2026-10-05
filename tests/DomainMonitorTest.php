@@ -5,6 +5,11 @@ declare(strict_types=1);
 namespace Rasuvaeff\DomainMonitor\Tests;
 
 use InvalidArgumentException;
+use Iodev\Whois\Whois;
+use Psr\Http\Client\ClientExceptionInterface;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Log\LoggerInterface;
 use Rasuvaeff\CircuitBreaker\BreakerConfig;
 use Rasuvaeff\CircuitBreaker\CircuitBreaker;
 use Rasuvaeff\CircuitBreaker\Clock\SystemClock;
@@ -13,7 +18,9 @@ use Rasuvaeff\CircuitBreaker\Outcome;
 use Rasuvaeff\CircuitBreaker\Ratio;
 use Rasuvaeff\DomainMonitor\CheckName;
 use Rasuvaeff\DomainMonitor\CheckStatus;
+use Rasuvaeff\DomainMonitor\DnsRecords;
 use Rasuvaeff\DomainMonitor\DnsService;
+use Rasuvaeff\DomainMonitor\DnsServiceInterface;
 use Rasuvaeff\DomainMonitor\DomainHealthReport;
 use Rasuvaeff\DomainMonitor\DomainMonitor;
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
@@ -28,21 +35,28 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\ClientExceptionStub;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequest;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\FlakyHttpClient;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\StubDnsService;
 use Rasuvaeff\Duration\Duration;
 use Rasuvaeff\Retry\Retry;
+use Rasuvaeff\Understudy\Arg;
+use Rasuvaeff\Understudy\Captor;
+use Rasuvaeff\Understudy\Understudy;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
+
+use function Rasuvaeff\Understudy\verify;
+use function Rasuvaeff\Understudy\when;
 
 #[Test]
 #[Covers(DomainMonitor::class)]
 final class DomainMonitorTest
 {
+    private Captor $requests;
+
+    private Captor $warningMessages;
+
+    private Captor $warningContexts;
+
     public function returnsReportWithAllNullsWhenNoServicesConfigured(): void
     {
         $report = (new DomainMonitor())->check(host: 'example.com');
@@ -69,7 +83,7 @@ final class DomainMonitorTest
 
     public function acceptsCustomServiceImplementationsViaInterfaces(): void
     {
-        $monitor = new DomainMonitor(dns: new StubDnsService());
+        $monitor = new DomainMonitor(dns: $this->stubDns());
 
         $report = $monitor->check(host: 'example.com');
 
@@ -123,7 +137,7 @@ final class DomainMonitorTest
 
     public function checkManyReturnsReportsKeyedByNormalizedHost(): void
     {
-        $monitor = new DomainMonitor(dns: new StubDnsService());
+        $monitor = new DomainMonitor(dns: $this->stubDns());
 
         $reports = $monitor->checkMany(
             hosts: ['https://EXAMPLE.com/path', 'example.org'],
@@ -149,7 +163,7 @@ final class DomainMonitorTest
 
     public function probeRunsAndReturnsStatusInReport(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200));
+        $client = $this->client(new FakeResponse(statusCode: 200));
         $monitor = new DomainMonitor(
             httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
         );
@@ -158,8 +172,7 @@ final class DomainMonitorTest
 
         Assert::notNull($report->probe);
         Assert::same($report->probe->unwrap()->status, 200);
-        Assert::instanceOf($client->lastRequest, FakeRequest::class);
-        Assert::same($client->lastRequest->getUriString(), 'https://example.com/');
+        Assert::same($this->requests->last()->getUriString(), 'https://example.com/');
     }
 
     public function reusesProbeResponseForSecurityHeaders(): void
@@ -174,7 +187,7 @@ final class DomainMonitorTest
                 'X-Content-Type-Options' => ['nosniff'],
             ],
         );
-        $client = new RecordingHttpClient(response: $response);
+        $client = $this->client($response);
 
         $monitor = new DomainMonitor(
             httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
@@ -194,10 +207,10 @@ final class DomainMonitorTest
     public function reusesProbeResponseForContentCheck(): void
     {
         $response = new FakeResponse(statusCode: 200, body: 'hello world');
-        $client = new RecordingHttpClient(response: $response);
+        $client = $this->client($response);
         $probeService = new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory());
         $contentService = new HttpContentCheckService(
-            httpClient: new RecordingHttpClient(response: new FakeResponse(statusCode: 500, body: 'wrong')),
+            httpClient: $this->client(new FakeResponse(statusCode: 500, body: 'wrong')),
             requestFactory: new FakeRequestFactory(),
         );
 
@@ -218,7 +231,7 @@ final class DomainMonitorTest
 
     public function contentMakesOwnRequestWhenProbeNotConfigured(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: 'ok'));
+        $client = $this->client(new FakeResponse(statusCode: 200, body: 'ok'));
         $monitor = new DomainMonitor(
             content: new HttpContentCheckService(httpClient: $client, requestFactory: new FakeRequestFactory()),
         );
@@ -227,14 +240,13 @@ final class DomainMonitorTest
 
         Assert::notNull($report->content);
         Assert::same($report->content->unwrap()->status, CheckStatus::OK);
-        Assert::notNull($client->lastRequest);
-        Assert::same($client->lastRequest->getUriString(), 'https://example.com/');
+        Assert::same($this->requests->last()->getUriString(), 'https://example.com/');
     }
 
     public function probeFailureSetsStatusZeroAndOmitsSecurityHeaders(): void
     {
-        $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'connection refused'));
-        $logger = new RecordingLogger();
+        $client = $this->failingClient(new ClientExceptionStub(message: 'connection refused'));
+        $logger = $this->logger();
 
         $monitor = new DomainMonitor(
             logger: $logger,
@@ -251,13 +263,11 @@ final class DomainMonitorTest
         Assert::same($report->getStatus(), CheckStatus::CRITICAL);
         Assert::null($report->securityHeaders);
 
-        Assert::count($logger->records, 1);
-        $probeLog = $logger->records[0];
-        Assert::same($probeLog['level'], 'warning');
-        Assert::same($probeLog['message'], 'HTTP probe failed');
-        Assert::same($probeLog['context']['host'], 'example.com');
-        Assert::same($probeLog['context']['check'], 'probe');
-        Assert::same($probeLog['context']['error'], 'connection refused');
+        verify(fn() => $logger->warning('HTTP probe failed', [
+            'host' => 'example.com',
+            'check' => 'probe',
+            'error' => 'connection refused',
+        ]));
     }
 
     public function serviceExceptionBecomesErrSlot(): void
@@ -275,7 +285,7 @@ final class DomainMonitorTest
 
     public function serviceExceptionIsLoggedWithCheckName(): void
     {
-        $logger = new RecordingLogger();
+        $logger = $this->logger();
         $monitor = new DomainMonitor(
             logger: $logger,
             port: new PortService(connector: static fn(): array => throw new \RuntimeException(message: 'timeout')),
@@ -283,10 +293,10 @@ final class DomainMonitorTest
 
         $monitor->check(host: 'example.com');
 
-        Assert::count($logger->records, 1);
-        Assert::same($logger->records[0]['message'], 'port check failed: timeout');
-        Assert::same($logger->records[0]['context']['host'], 'example.com');
-        Assert::same($logger->records[0]['context']['check'], 'port');
+        verify(fn() => $logger->warning('port check failed: timeout', [
+            'host' => 'example.com',
+            'check' => 'port',
+        ]));
     }
 
     public function passesPortAndTimeoutOptionsToPortService(): void
@@ -425,10 +435,7 @@ final class DomainMonitorTest
 
     public function retryWrapsHttpProbe(): void
     {
-        $client = new FlakyHttpClient(
-            failures: 1,
-            response: new FakeResponse(statusCode: 200),
-        );
+        $client = $this->flakyClient(failures: 1, response: new FakeResponse(statusCode: 200));
 
         $monitor = new DomainMonitor(
             httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
@@ -439,7 +446,7 @@ final class DomainMonitorTest
             options: new DomainMonitorOptions(retry: Retry::immediate(maxAttempts: 3)),
         );
 
-        Assert::same($client->calls, 2);
+        verify(fn() => $client->sendRequest(Arg::any()), times: 2);
         Assert::notNull($report->probe);
         Assert::same($report->probe->unwrap()->status, 200);
         Assert::false($report->hasErrors());
@@ -447,11 +454,8 @@ final class DomainMonitorTest
 
     public function probeRetryExhaustionSetsStatusZeroAndLogsWarning(): void
     {
-        $client = new FlakyHttpClient(
-            failures: 5,
-            response: new FakeResponse(statusCode: 200),
-        );
-        $logger = new RecordingLogger();
+        $client = $this->flakyClient(failures: 5, response: new FakeResponse(statusCode: 200));
+        $logger = $this->logger();
 
         $monitor = new DomainMonitor(
             logger: $logger,
@@ -463,23 +467,19 @@ final class DomainMonitorTest
             options: new DomainMonitorOptions(retry: Retry::immediate(maxAttempts: 2)),
         );
 
-        Assert::same($client->calls, 2);
+        verify(fn() => $client->sendRequest(Arg::any()), times: 2);
         Assert::notNull($report->probe);
         Assert::same($report->probe->unwrap()->status, 0);
         Assert::null($report->securityHeaders);
         Assert::false($report->hasErrors());
 
-        Assert::count($logger->records, 1);
-        Assert::same($logger->records[0]['message'], 'HTTP probe failed');
-        Assert::string($logger->records[0]['context']['error'])->contains('Retry exhausted after 2 attempt(s)');
+        verify(fn() => $logger->warning('HTTP probe failed', Arg::any()));
+        Assert::string($this->warningContexts->last()['error'])->contains('Retry exhausted after 2 attempt(s)');
     }
 
     public function circuitBreakerAdmittedRunReturnsReport(): void
     {
-        $client = new FlakyHttpClient(
-            failures: 100,
-            response: new FakeResponse(statusCode: 200),
-        );
+        $client = $this->flakyClient(failures: 100, response: new FakeResponse(statusCode: 200));
         $monitor = new DomainMonitor(
             httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
         );
@@ -489,7 +489,7 @@ final class DomainMonitorTest
             options: new DomainMonitorOptions(circuitBreaker: $this->breaker()),
         );
 
-        Assert::same($client->calls, 1);
+        verify(fn() => $client->sendRequest(Arg::any()), times: 1);
         Assert::notNull($report->probe);
         Assert::same($report->probe->unwrap()->status, 0);
         Assert::same($report->getStatus(), CheckStatus::CRITICAL);
@@ -497,11 +497,8 @@ final class DomainMonitorTest
 
     public function circuitBreakerRejectionSkipsAllChecksAndRecordsError(): void
     {
-        $client = new FlakyHttpClient(
-            failures: 100,
-            response: new FakeResponse(statusCode: 200),
-        );
-        $logger = new RecordingLogger();
+        $client = $this->flakyClient(failures: 100, response: new FakeResponse(statusCode: 200));
+        $logger = $this->logger();
         $breaker = $this->breaker();
         $monitor = new DomainMonitor(
             logger: $logger,
@@ -516,7 +513,7 @@ final class DomainMonitorTest
         $first = $monitor->check(host: 'example.com', options: $options);
         $rejected = $monitor->check(host: 'example.com', options: $options);
 
-        Assert::same($client->calls, 1);
+        verify(fn() => $client->sendRequest(Arg::any()), times: 1);
         Assert::same($first->getStatus(), CheckStatus::CRITICAL);
 
         Assert::same($rejected->host, 'example.com');
@@ -529,17 +526,16 @@ final class DomainMonitorTest
         Assert::string($errors[0]->message)->contains('Circuit "domain-monitor" is open');
         Assert::same($rejected->thresholds, $thresholds);
 
-        Assert::count($logger->records, 2);
-        Assert::same($logger->records[1]['message'], 'Domain check rejected by circuit breaker');
-        Assert::same($logger->records[1]['context']['host'], 'example.com');
+        Assert::same($this->warningMessages->all(), [
+            'HTTP probe failed',
+            'Domain check rejected by circuit breaker',
+        ]);
+        Assert::same($this->warningContexts->all()[1]['host'], 'example.com');
     }
 
     public function circuitBreakerStaysClosedWhenChecksSucceed(): void
     {
-        $client = new FlakyHttpClient(
-            failures: 0,
-            response: new FakeResponse(statusCode: 200),
-        );
+        $client = $this->flakyClient(failures: 0, response: new FakeResponse(statusCode: 200));
         $breaker = $this->breaker();
         $monitor = new DomainMonitor(
             httpProbe: new HttpProbeService(httpClient: $client, requestFactory: new FakeRequestFactory()),
@@ -549,7 +545,7 @@ final class DomainMonitorTest
         $first = $monitor->check(host: 'example.com', options: $options);
         $second = $monitor->check(host: 'example.com', options: $options);
 
-        Assert::same($client->calls, 2);
+        verify(fn() => $client->sendRequest(Arg::any()), times: 2);
         Assert::same($first->getStatus(), CheckStatus::OK);
         Assert::same($second->getStatus(), CheckStatus::OK);
         Assert::false($second->hasErrors());
@@ -610,10 +606,13 @@ final class DomainMonitorTest
 
     public function createWiresEveryServiceFromHttpAndWhois(): void
     {
+        $whois = Understudy::for(Whois::class);
+        when(fn() => $whois->loadDomainInfo(Arg::any()))->returns(null);
+
         $monitor = DomainMonitor::create(
-            httpClient: new RecordingHttpClient(response: new FakeResponse(statusCode: 200)),
+            httpClient: $this->client(new FakeResponse(statusCode: 200)),
             requestFactory: new FakeRequestFactory(),
-            whois: new FakeWhois(handler: static fn(string $domain) => null),
+            whois: $whois,
         );
 
         Assert::notNull($monitor->httpProbe);
@@ -630,7 +629,7 @@ final class DomainMonitorTest
     public function createWithoutWhoisDisablesWhoisCheck(): void
     {
         $monitor = DomainMonitor::create(
-            httpClient: new RecordingHttpClient(response: new FakeResponse(statusCode: 200)),
+            httpClient: $this->client(new FakeResponse(statusCode: 200)),
             requestFactory: new FakeRequestFactory(),
         );
 
@@ -649,11 +648,9 @@ final class DomainMonitorTest
                 'X-Content-Type-Options' => ['nosniff'],
             ],
         );
-        $probeClient = new RecordingHttpClient(response: $probeResponse);
-        $robotsResponse = new FakeResponse(statusCode: 200, body: "Sitemap: https://example.com/sitemap.xml\n");
-        $robotsClient = new RecordingHttpClient(response: $robotsResponse);
-        $sitemapResponse = new FakeResponse(statusCode: 200, body: '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url></urlset>');
-        $sitemapClient = new RecordingHttpClient(response: $sitemapResponse);
+        $probeClient = $this->client($probeResponse);
+        $robotsClient = $this->client(new FakeResponse(statusCode: 200, body: "Sitemap: https://example.com/sitemap.xml\n"));
+        $sitemapClient = $this->client(new FakeResponse(statusCode: 200, body: '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/</loc></url></urlset>'));
 
         $monitor = new DomainMonitor(
             httpProbe: new HttpProbeService(httpClient: $probeClient, requestFactory: new FakeRequestFactory()),
@@ -678,5 +675,67 @@ final class DomainMonitorTest
         Assert::same($report->port?->unwrap()?->status, CheckStatus::OK);
         Assert::same($report->port?->unwrap()?->connectTime, 0.02);
         Assert::same($report->getStatus(), CheckStatus::OK);
+    }
+
+    private function client(ResponseInterface $response): ClientInterface
+    {
+        $client = Understudy::for(ClientInterface::class);
+        $this->requests = Arg::captor(FakeRequest::class);
+
+        when(fn() => $client->sendRequest($this->requests->capture()))->returns($response);
+
+        return $client;
+    }
+
+    private function failingClient(ClientExceptionInterface $exception): ClientInterface
+    {
+        $client = Understudy::for(ClientInterface::class);
+
+        when(fn() => $client->sendRequest(Arg::any()))->throws($exception);
+
+        return $client;
+    }
+
+    /**
+     * A client that throws on its first `$failures` calls and answers with
+     * `$response` afterwards; with `$failures` above what a test can spend,
+     * every call throws.
+     */
+    private function flakyClient(int $failures, ResponseInterface $response): ClientInterface
+    {
+        $client = Understudy::for(ClientInterface::class);
+
+        if ($failures === 0) {
+            when(fn() => $client->sendRequest(Arg::any()))->returns($response);
+        } elseif ($failures === 1) {
+            when(fn() => $client->sendRequest(Arg::any()))
+                ->throws(new ClientExceptionStub(message: 'transient failure #1'))
+                ->then()->returns($response);
+        } else {
+            when(fn() => $client->sendRequest(Arg::any()))
+                ->throws(new ClientExceptionStub(message: 'transient failure'));
+        }
+
+        return $client;
+    }
+
+    private function logger(): LoggerInterface
+    {
+        $logger = Understudy::for(LoggerInterface::class);
+        $this->warningMessages = Arg::captor();
+        $this->warningContexts = Arg::captor();
+
+        when(fn() => $logger->warning($this->warningMessages->capture(), $this->warningContexts->capture()));
+
+        return $logger;
+    }
+
+    private function stubDns(): DnsServiceInterface
+    {
+        $dns = Understudy::for(DnsServiceInterface::class);
+
+        when(fn() => $dns->check(Arg::any()))->returns(new DnsRecords(a: ['9.9.9.9']));
+
+        return $dns;
     }
 }

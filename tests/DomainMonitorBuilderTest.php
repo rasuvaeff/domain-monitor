@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
+use Iodev\Whois\Whois;
+use Psr\Http\Client\ClientInterface;
 use Rasuvaeff\DomainMonitor\DomainMonitor;
 use Rasuvaeff\DomainMonitor\DomainMonitorBuilder;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeWhois;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
+use Rasuvaeff\Understudy\Arg;
+use Rasuvaeff\Understudy\Understudy;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
+
+use function Rasuvaeff\Understudy\when;
 
 #[Test]
 #[Covers(DomainMonitorBuilder::class)]
@@ -49,8 +53,11 @@ final class DomainMonitorBuilderTest
 
     public function withWhoisWiresWhoisCheck(): void
     {
+        $whois = Understudy::for(Whois::class);
+        when(fn() => $whois->loadDomainInfo(Arg::any()))->returns(null);
+
         $monitor = DomainMonitorBuilder::create()
-            ->withWhois(new FakeWhois(handler: static fn(string $domain) => null))
+            ->withWhois($whois)
             ->build();
 
         Assert::notNull($monitor->whois);
@@ -109,8 +116,12 @@ final class DomainMonitorBuilderTest
         Assert::null($monitor->securityHeaders);
     }
 
-    private function client(): RecordingHttpClient
+    private function client(): ClientInterface
     {
-        return new RecordingHttpClient(response: new FakeResponse(statusCode: 200));
+        $client = Understudy::for(ClientInterface::class);
+
+        when(fn() => $client->sendRequest(Arg::any()))->returns(new FakeResponse(statusCode: 200));
+
+        return $client;
     }
 }
