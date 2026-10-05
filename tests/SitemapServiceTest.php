@@ -4,25 +4,40 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\DomainMonitor\Tests;
 
+use Psr\Http\Client\ClientExceptionInterface;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Log\LoggerInterface;
 use Rasuvaeff\DomainMonitor\CheckStatus;
 use Rasuvaeff\DomainMonitor\HttpProbeOptions;
 use Rasuvaeff\DomainMonitor\SitemapService;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\ClientExceptionStub;
+use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequest;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingHttpClient;
-use Rasuvaeff\DomainMonitor\Tests\Fixtures\RecordingLogger;
+use Rasuvaeff\Understudy\Arg;
+use Rasuvaeff\Understudy\Captor;
+use Rasuvaeff\Understudy\Understudy;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
+
+use function Rasuvaeff\Understudy\verify;
+use function Rasuvaeff\Understudy\when;
 
 #[Test]
 #[Covers(SitemapService::class)]
 final class SitemapServiceTest
 {
+    private Captor $requests;
+
+    private Captor $errorMessages;
+
+    private Captor $errorContexts;
+
     public function countsUrlsInPlainSitemap(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(
+        $client = $this->client(new FakeResponse(
             statusCode: 200,
             body: '<urlset><url/><url/><url/></urlset>',
         ));
@@ -38,7 +53,7 @@ final class SitemapServiceTest
 
     public function countsExactlyOneUrlInSitemap(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(
+        $client = $this->client(new FakeResponse(
             statusCode: 200,
             body: '<urlset><url/></urlset>',
         ));
@@ -56,7 +71,7 @@ final class SitemapServiceTest
             . '<url><loc>https://example.com/a</loc></url>'
             . '<url><loc>https://example.com/b</loc></url>'
             . '</urlset>';
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: $body));
+        $client = $this->client(new FakeResponse(statusCode: 200, body: $body));
 
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
@@ -71,7 +86,7 @@ final class SitemapServiceTest
             . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
             . '<url><loc>https://example.com/a</loc></url>'
             . '</urlset>';
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: $body));
+        $client = $this->client(new FakeResponse(statusCode: 200, body: $body));
 
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
@@ -81,7 +96,7 @@ final class SitemapServiceTest
 
     public function countsZeroUrlsInEmptySitemap(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: '<urlset></urlset>'));
+        $client = $this->client(new FakeResponse(statusCode: 200, body: '<urlset></urlset>'));
 
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
@@ -93,7 +108,7 @@ final class SitemapServiceTest
 
     public function returnsWarningForNonOkStatus(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 404, body: 'not found'));
+        $client = $this->client(new FakeResponse(statusCode: 404, body: 'not found'));
 
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
@@ -108,7 +123,7 @@ final class SitemapServiceTest
     {
         $previousState = \libxml_use_internal_errors(use_errors: false);
 
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: '<urlset><url></urlset'));
+        $client = $this->client(new FakeResponse(statusCode: 200, body: '<urlset><url></urlset'));
 
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
@@ -122,7 +137,7 @@ final class SitemapServiceTest
 
     public function returnsUnknownOnNetworkFailure(): void
     {
-        $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'down'));
+        $client = $this->failingClient(new ClientExceptionStub(message: 'down'));
 
         $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
@@ -135,40 +150,69 @@ final class SitemapServiceTest
 
     public function logsErrorWithUrlContextOnNetworkFailure(): void
     {
-        $client = new RecordingHttpClient(exception: new ClientExceptionStub(message: 'connection refused'));
-        $logger = new RecordingLogger();
+        $client = $this->failingClient(new ClientExceptionStub(message: 'connection refused'));
+        $logger = $this->logger();
 
         (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory(), logger: $logger))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml');
 
-        Assert::count($logger->records, 1);
-        Assert::same($logger->records[0]['message'], 'connection refused');
-        Assert::same($logger->records[0]['context'], ['url' => 'https://example.com/sitemap.xml']);
+        verify(fn() => $logger->error(Arg::any(), Arg::any()), times: 1);
+        Assert::same($this->errorMessages->last(), 'connection refused');
+        Assert::same($this->errorContexts->last(), ['url' => 'https://example.com/sitemap.xml']);
     }
 
     public function appliesOptionsMethodAndHeadersAndDefaultUserAgent(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: '<urlset/>'));
+        $client = $this->client(new FakeResponse(statusCode: 200, body: '<urlset/>'));
         $options = new HttpProbeOptions(method: 'HEAD', headers: ['X-Token' => 'secret'], userAgent: 'probe/1.0');
 
         (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml', options: $options);
 
-        Assert::notNull($client->lastRequest);
-        Assert::same($client->lastRequest->getMethod(), 'HEAD');
-        Assert::same($client->lastRequest->getHeaderLine(name: 'X-Token'), 'secret');
-        Assert::same($client->lastRequest->getHeaderLine(name: 'User-Agent'), 'probe/1.0');
+        $request = $this->requests->last();
+        Assert::same($request->getMethod(), 'HEAD');
+        Assert::same($request->getHeaderLine(name: 'X-Token'), 'secret');
+        Assert::same($request->getHeaderLine(name: 'User-Agent'), 'probe/1.0');
     }
 
     public function keepsCustomUserAgentHeaderFromOptions(): void
     {
-        $client = new RecordingHttpClient(response: new FakeResponse(statusCode: 200, body: '<urlset/>'));
+        $client = $this->client(new FakeResponse(statusCode: 200, body: '<urlset/>'));
         $options = new HttpProbeOptions(headers: ['User-Agent' => 'custom-agent'], userAgent: 'default-agent');
 
         (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
             ->check(sitemapUrl: 'https://example.com/sitemap.xml', options: $options);
 
-        Assert::notNull($client->lastRequest);
-        Assert::same($client->lastRequest->getHeaderLine(name: 'User-Agent'), 'custom-agent');
+        Assert::same($this->requests->last()->getHeaderLine(name: 'User-Agent'), 'custom-agent');
+    }
+
+    private function client(ResponseInterface $response): ClientInterface
+    {
+        $client = Understudy::for(ClientInterface::class);
+        $this->requests = Arg::captor(FakeRequest::class);
+
+        when(fn() => $client->sendRequest($this->requests->capture()))->returns($response);
+
+        return $client;
+    }
+
+    private function failingClient(ClientExceptionInterface $exception): ClientInterface
+    {
+        $client = Understudy::for(ClientInterface::class);
+
+        when(fn() => $client->sendRequest(Arg::any()))->throws($exception);
+
+        return $client;
+    }
+
+    private function logger(): LoggerInterface
+    {
+        $logger = Understudy::for(LoggerInterface::class);
+        $this->errorMessages = Arg::captor();
+        $this->errorContexts = Arg::captor();
+
+        when(fn() => $logger->error($this->errorMessages->capture(), $this->errorContexts->capture()));
+
+        return $logger;
     }
 }
