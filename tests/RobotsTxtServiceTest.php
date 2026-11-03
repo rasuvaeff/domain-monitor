@@ -152,6 +152,16 @@ final class RobotsTxtServiceTest
         Assert::same($this->requests->last()->getHeaderLine(name: 'User-Agent'), 'custom-agent');
     }
 
+    public function matchesSitemapDirectivesSeparatedByUnicodeWhitespace(): void
+    {
+        $client = $this->client(new FakeResponse(statusCode: 200, body: "Sitemap:\u{00A0}https://example.com/sitemap.xml\n"));
+
+        $result = (new RobotsTxtService(httpClient: $client, requestFactory: new FakeRequestFactory()))
+            ->check(baseUrl: 'https://example.com');
+
+        Assert::same($result->sitemaps, ['https://example.com/sitemap.xml']);
+    }
+
     private function client(ResponseInterface $response): ClientInterface
     {
         $client = Understudy::for(ClientInterface::class);

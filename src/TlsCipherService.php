@@ -60,8 +60,11 @@ final readonly class TlsCipherService implements TlsCipherServiceInterface
     }
 
     #[\Override]
-    public function check(string $host, int $port = 443, float $timeoutSeconds = 10.0): TlsCipherCheck
-    {
+    public function check(
+        string $host,
+        int $port = 443,
+        float $timeoutSeconds = 10.0,
+    ): TlsCipherCheck {
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);
         $connector = $this->connector;
 

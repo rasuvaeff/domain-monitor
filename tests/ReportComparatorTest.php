@@ -311,6 +311,31 @@ final class ReportComparatorTest
         Assert::same($worst->to?->severity() ?? -1, $maxRank);
     }
 
+    public function worstTransitionKeepsTheFirstOfEquallySevereOnes(): void
+    {
+        $first = new StatusTransition(check: CheckName::Probe, from: CheckStatus::OK, to: CheckStatus::WARNING, kind: TransitionKind::Degraded);
+        $second = new StatusTransition(check: CheckName::Dns, from: CheckStatus::OK, to: CheckStatus::WARNING, kind: TransitionKind::Degraded);
+
+        Assert::same((new ReportDiff([$first, $second]))->worstTransition(), $first);
+    }
+
+    public function aDisappearedTransitionRanksBelowAnyKnownStatus(): void
+    {
+        $gone = new StatusTransition(check: CheckName::Probe, from: CheckStatus::CRITICAL, to: null, kind: TransitionKind::Disappeared);
+        $unknown = new StatusTransition(check: CheckName::Dns, from: CheckStatus::OK, to: CheckStatus::UNKNOWN, kind: TransitionKind::Changed);
+
+        Assert::same((new ReportDiff([$gone, $unknown]))->worstTransition(), $unknown);
+    }
+
+    public function statusTransitionsSerializeMissingStatusesAsNull(): void
+    {
+        $appeared = new StatusTransition(check: CheckName::Probe, from: null, to: CheckStatus::OK, kind: TransitionKind::Appeared);
+        $disappeared = new StatusTransition(check: CheckName::Dns, from: CheckStatus::OK, to: null, kind: TransitionKind::Disappeared);
+
+        Assert::same($appeared->jsonSerialize(), ['check' => 'probe', 'from' => null, 'to' => 'ok', 'kind' => 'appeared']);
+        Assert::same($disappeared->jsonSerialize(), ['check' => 'dns', 'from' => 'ok', 'to' => null, 'kind' => 'disappeared']);
+    }
+
     private function singleTransition(int $previousStatus, int $currentStatus): StatusTransition
     {
         $transitions = $this->comparator->diff(

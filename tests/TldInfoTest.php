@@ -117,4 +117,12 @@ final class TldInfoTest
             ],
         );
     }
+
+    public function daysUntilExpiryIsExactOnAWholeNumberOfDays(): void
+    {
+        $now = new DateTimeImmutable(datetime: '2026-01-01T00:00:00+00:00');
+        $tldInfo = new TldInfo(domain: 'example.com', expirationDate: $now->modify('+40 days'), states: []);
+
+        Assert::same($tldInfo->daysUntilExpiry(now: $now), 40);
+    }
 }

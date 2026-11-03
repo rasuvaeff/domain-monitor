@@ -116,6 +116,30 @@ final class DomainMonitorBuilderTest
         Assert::null($monitor->securityHeaders);
     }
 
+    public function emailTlsAndCookieChecksAreOnByDefaultAndIndividuallyDisablable(): void
+    {
+        $withHttp = DomainMonitorBuilder::create()
+            ->withHttp(client: $this->client(), requestFactory: new FakeRequestFactory());
+        $default = (clone $withHttp)->build();
+        $without = $withHttp->withoutEmailSecurity()->withoutTlsCipher()->withoutCookieSecurity()->build();
+
+        Assert::notNull($default->emailSecurity);
+        Assert::notNull($default->tlsCipher);
+        Assert::notNull($default->cookieSecurity);
+        Assert::null($without->emailSecurity);
+        Assert::null($without->tlsCipher);
+        Assert::null($without->cookieSecurity);
+    }
+
+    public function cookieSecurityNeedsTheProbeButEmailAndTlsDoNot(): void
+    {
+        $monitor = DomainMonitorBuilder::create()->build();
+
+        Assert::notNull($monitor->emailSecurity);
+        Assert::notNull($monitor->tlsCipher);
+        Assert::null($monitor->cookieSecurity);
+    }
+
     private function client(): ClientInterface
     {
         $client = Understudy::for(ClientInterface::class);

@@ -72,4 +72,9 @@ final class ProbeResultTest
             Assert::string($e->getMessage())->contains('Total time must be greater than or equal to 0');
         }
     }
+
+    public function serializesStatusAndTotalTime(): void
+    {
+        Assert::same((new ProbeResult(status: 204, totalTime: 0.25))->jsonSerialize(), ['status' => 204, 'totalTime' => 0.25]);
+    }
 }

@@ -18,6 +18,8 @@ use Rasuvaeff\CircuitBreaker\Outcome;
 use Rasuvaeff\CircuitBreaker\Ratio;
 use Rasuvaeff\DomainMonitor\CheckName;
 use Rasuvaeff\DomainMonitor\CheckStatus;
+use Rasuvaeff\DomainMonitor\CookieSecurityCheck;
+use Rasuvaeff\DomainMonitor\CookieSecurityServiceInterface;
 use Rasuvaeff\DomainMonitor\DnsRecords;
 use Rasuvaeff\DomainMonitor\DnsService;
 use Rasuvaeff\DomainMonitor\DnsServiceInterface;
@@ -25,6 +27,7 @@ use Rasuvaeff\DomainMonitor\DomainHealthReport;
 use Rasuvaeff\DomainMonitor\DomainMonitor;
 use Rasuvaeff\DomainMonitor\DomainMonitorOptions;
 use Rasuvaeff\DomainMonitor\HttpContentCheckService;
+use Rasuvaeff\DomainMonitor\HttpContentCheckServiceInterface;
 use Rasuvaeff\DomainMonitor\HttpProbeService;
 use Rasuvaeff\DomainMonitor\PortService;
 use Rasuvaeff\DomainMonitor\ReportThresholds;
@@ -35,6 +38,7 @@ use Rasuvaeff\DomainMonitor\Tests\Fixtures\ClientExceptionStub;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequest;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeRequestFactory;
 use Rasuvaeff\DomainMonitor\Tests\Fixtures\FakeResponse;
+use Rasuvaeff\DomainMonitor\WhoisServiceInterface;
 use Rasuvaeff\Duration\Duration;
 use Rasuvaeff\Retry\Retry;
 use Rasuvaeff\Understudy\Arg;
@@ -531,6 +535,7 @@ final class DomainMonitorTest
             'Domain check rejected by circuit breaker',
         ]);
         Assert::same($this->warningContexts->all()[1]['host'], 'example.com');
+        Assert::string($this->warningContexts->all()[1]['error'])->contains('Circuit "domain-monitor" is open');
     }
 
     public function circuitBreakerStaysClosedWhenChecksSucceed(): void
@@ -675,6 +680,65 @@ final class DomainMonitorTest
         Assert::same($report->port?->unwrap()?->status, CheckStatus::OK);
         Assert::same($report->port?->unwrap()?->connectTime, 0.02);
         Assert::same($report->getStatus(), CheckStatus::OK);
+    }
+
+    public function cookieSecurityRunsOnTheProbeResponse(): void
+    {
+        $cookies = Understudy::for(CookieSecurityServiceInterface::class);
+        when(fn() => $cookies->check(Arg::any()))->returns(new CookieSecurityCheck(status: CheckStatus::OK, reason: 'fine'));
+        $monitor = new DomainMonitor(
+            httpProbe: new HttpProbeService(httpClient: $this->client(new FakeResponse(statusCode: 200)), requestFactory: new FakeRequestFactory()),
+            cookieSecurity: $cookies,
+        );
+
+        $report = $monitor->check(host: 'example.com');
+
+        verify(fn() => $cookies->check(Arg::any()), times: 1);
+        Assert::same($report->cookieSecurity?->unwrap()->reason, 'fine');
+    }
+
+    public function cookieSecurityIsSkippedWithoutAnHttpResponse(): void
+    {
+        $cookies = Understudy::for(CookieSecurityServiceInterface::class);
+        when(fn() => $cookies->check(Arg::any()))->returns(new CookieSecurityCheck(status: CheckStatus::OK));
+        $monitor = new DomainMonitor(
+            httpProbe: new HttpProbeService(
+                httpClient: $this->failingClient(new ClientExceptionStub(message: 'down')),
+                requestFactory: new FakeRequestFactory(),
+            ),
+            cookieSecurity: $cookies,
+        );
+
+        $report = $monitor->check(host: 'example.com');
+
+        verify(fn() => $cookies->check(Arg::any()), times: 0);
+        Assert::null($report->cookieSecurity);
+    }
+
+    public function anExhaustedBudgetAlsoSkipsTheContentCheck(): void
+    {
+        $content = Understudy::for(HttpContentCheckServiceInterface::class);
+        $monitor = new DomainMonitor(content: $content);
+
+        $report = $monitor->check(
+            host: 'example.com',
+            options: new DomainMonitorOptions(maxDuration: Duration::zero()),
+        );
+
+        verify(fn() => $content->check(Arg::any(), Arg::any(), Arg::any(), Arg::any(), Arg::any()), times: 0);
+        Assert::same($report->content?->error()?->check, CheckName::Content);
+        Assert::same($report->content->error()->message, 'Time budget exceeded');
+    }
+
+    public function aServiceThatReturnsNothingBecomesAnErrSlot(): void
+    {
+        $whois = Understudy::for(WhoisServiceInterface::class);
+        when(fn() => $whois->check(Arg::any()))->returns(null);
+
+        $report = (new DomainMonitor(whois: $whois))->check(host: 'example.com');
+
+        Assert::same($report->whois?->error()?->check, CheckName::Whois);
+        Assert::same($report->whois->error()->message, 'Service returned no result');
     }
 
     private function client(ResponseInterface $response): ClientInterface

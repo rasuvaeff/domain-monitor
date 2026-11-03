@@ -132,6 +132,40 @@ final class WhoisServiceTest
         Assert::same($result->states, ['active']);
     }
 
+    public function readsANumericStringExpirationTimestamp(): void
+    {
+        $whois = $this->whoisReturning($this->createVendorInfo(['domainName' => 'example.com', 'expirationDate' => '1769817600']));
+
+        $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
+
+        Assert::same($result?->expirationDate?->getTimestamp(), 1_769_817_600);
+    }
+
+    public function ignoresANonNumericExpirationValue(): void
+    {
+        $whois = $this->whoisReturning($this->createVendorInfo(['domainName' => 'example.com', 'expirationDate' => 'soon']));
+
+        $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
+
+        Assert::notNull($result);
+        Assert::null($result->expirationDate);
+    }
+
+    public function ignoresANonStringRegistrarAndANonListOfStates(): void
+    {
+        $whois = $this->whoisReturning($this->createVendorInfo([
+            'domainName' => 'example.com',
+            'registrar' => 123,
+            'states' => 'active',
+        ]));
+
+        $result = (new WhoisService(whois: $whois))->check(host: 'example.com');
+
+        Assert::notNull($result);
+        Assert::null($result->registrar);
+        Assert::same($result->states, []);
+    }
+
     public function setsRegistrarToNullWhenEmpty(): void
     {
         $vendorInfo = $this->createVendorInfo([
