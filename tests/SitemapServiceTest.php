@@ -186,6 +186,35 @@ final class SitemapServiceTest
         Assert::same($this->requests->last()->getHeaderLine(name: 'User-Agent'), 'custom-agent');
     }
 
+    public function countsUrlsWhoseNamespaceIsDeclaredBelowTheRoot(): void
+    {
+        $client = $this->client(new FakeResponse(
+            statusCode: 200,
+            body: '<urlset><url xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><loc>https://example.com/</loc></url></urlset>',
+        ));
+
+        $result = (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
+            ->check(sitemapUrl: 'https://example.com/sitemap.xml');
+
+        Assert::same($result->urlCount, 1);
+    }
+
+    public function leavesNoLibxmlErrorsBehindAfterParsing(): void
+    {
+        $previousState = \libxml_use_internal_errors(use_errors: false);
+        $client = $this->client(new FakeResponse(statusCode: 200, body: '<urlset><url></urlset'));
+
+        (new SitemapService(httpClient: $client, requestFactory: new FakeRequestFactory()))
+            ->check(sitemapUrl: 'https://example.com/sitemap.xml');
+
+        \libxml_use_internal_errors(use_errors: true);
+        $leftover = \libxml_get_errors();
+        \libxml_clear_errors();
+        \libxml_use_internal_errors(use_errors: $previousState);
+
+        Assert::same($leftover, []);
+    }
+
     private function client(ResponseInterface $response): ClientInterface
     {
         $client = Understudy::for(ClientInterface::class);

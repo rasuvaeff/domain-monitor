@@ -50,6 +50,26 @@ make test
 - `SslCertificateService` reads certificates best-effort and does not validate trust.
 - `WhoisService` maps vendor `TldInfo` to package `TldInfo`; do not leak vendor DTOs in the public API.
 - Code: `declare(strict_types=1)`, `#[\Override]`, explicit types.
+- **Mutation testing** runs with `--with-uncovered` and `minMsi` 92. Measured with
+  `zend.assertions=-1` as in CI: 1226 mutants, 18 Ignored, 57 undetected, overall
+  MSI 95%. The undetected ones are not worth tests:
+  - `TlsCipherService::defaultConnector()` (a real TLS handshake; unlike the other
+    default connectors it is not in `global-ignore`, its 19 mutants are Not Covered).
+  - `HostNormalizer::normalizeAsciiHost()` fallbacks for `IDNA_DEFAULT` /
+    `INTL_IDNA_VARIANT_UTS46` (always defined with ext-intl) and `idn_to_ascii()`
+    returning `false` (the host regex rejects such input first); the empty-host
+    throw after `parse_url()` (it returns `false` first).
+  - `WhoisService` `status`/`statuses` fallbacks: vendor `toArray()` only returns
+    `states`; `readArrayList()`'s `array_values` (the caller appends anyway).
+  - Identity or warning-only mutants: `DomainHealthReport::getStatus()` `>`/`>=`
+    (equal severity is the same enum), `DomainMonitor::deadlineHit()` `>=`,
+    `ReportComparator`/`ReportDiff` severity ties, `libxml` finally/clear (setting
+    `use_internal_errors(false)` clears the buffer), `explode(..., limit)` of a
+    cookie name, `DomainMonitorBuilder::build()` `&&` (client and factory are set
+    together), `EmailSecurityService` early returns that fall through to the same
+    result, `SitemapService` `count` fallbacks (`xpath()` does not fail on a parsed
+    document), `RobotsTxtService::buildRobotsUrl()` fallback (the URL is
+    normalized before it).
 
 ## Roadmap (deferred to a future 2.0 — breaking)
 

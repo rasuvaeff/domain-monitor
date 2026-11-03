@@ -109,4 +109,17 @@ final class HttpProbeOptionsTest
             Assert::string($e->getMessage())->contains('Timeout must be greater than 0');
         }
     }
+
+    public function aZeroDurationTimeoutIsRejected(): void
+    {
+        $message = null;
+
+        try {
+            new HttpProbeOptions(timeout: Duration::zero());
+        } catch (InvalidArgumentException $exception) {
+            $message = $exception->getMessage();
+        }
+
+        Assert::same($message, 'Timeout must be greater than 0');
+    }
 }

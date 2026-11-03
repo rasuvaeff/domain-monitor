@@ -8,8 +8,10 @@ use DateTimeImmutable;
 use Rasuvaeff\DomainMonitor\CheckError;
 use Rasuvaeff\DomainMonitor\CheckName;
 use Rasuvaeff\DomainMonitor\CheckStatus;
+use Rasuvaeff\DomainMonitor\CookieSecurityCheck;
 use Rasuvaeff\DomainMonitor\DnsRecords;
 use Rasuvaeff\DomainMonitor\DomainHealthReport;
+use Rasuvaeff\DomainMonitor\EmailSecurityCheck;
 use Rasuvaeff\DomainMonitor\HttpContentCheck;
 use Rasuvaeff\DomainMonitor\PortCheck;
 use Rasuvaeff\DomainMonitor\ProbeResult;
@@ -19,6 +21,7 @@ use Rasuvaeff\DomainMonitor\SecurityHeadersCheck;
 use Rasuvaeff\DomainMonitor\SitemapCheck;
 use Rasuvaeff\DomainMonitor\SslCertificate;
 use Rasuvaeff\DomainMonitor\TldInfo;
+use Rasuvaeff\DomainMonitor\TlsCipherCheck;
 use Rasuvaeff\Result\Result;
 use Testo\Assert;
 use Testo\Codecov\Covers;
@@ -559,5 +562,150 @@ final class DomainHealthReportTest
             validUntil: new DateTimeImmutable(datetime: $validUntil),
             subjectCn: 'example.com',
         );
+    }
+
+    public function dnsReasonCountsExactlyThePresentRecordTypes(): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', dns: new DnsRecords(a: ['1.2.3.4'], mx: ['mail.example.com']));
+
+        Assert::same($report->getCheck(name: CheckName::Dns)?->reason, '2 record type(s) present');
+    }
+
+    public function robotsTxtAndSitemapReasonsWhenMissing(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            robotsTxt: new RobotsTxtCheck(status: CheckStatus::WARNING, httpStatus: 404, exists: false, sitemaps: []),
+            sitemap: new SitemapCheck(status: CheckStatus::WARNING, httpStatus: 404, exists: false, urlCount: 0),
+        );
+
+        Assert::same($report->getCheck(name: CheckName::RobotsTxt)?->reason, 'robots.txt not found');
+        Assert::same($report->getCheck(name: CheckName::RobotsTxt)?->status, CheckStatus::WARNING);
+        Assert::same($report->getCheck(name: CheckName::Sitemap)?->reason, 'Sitemap not found');
+        Assert::same($report->getCheck(name: CheckName::Sitemap)?->status, CheckStatus::WARNING);
+    }
+
+    public function plainAndWrappedEmailTlsAndCookieChecksProduceTheSameResults(): void
+    {
+        $email = new EmailSecurityCheck(status: CheckStatus::OK, hasSpf: true);
+        $tls = new TlsCipherCheck(status: CheckStatus::OK, tlsVersion: 'TLSv1.3', cipherName: 'AES');
+        $cookie = new CookieSecurityCheck(status: CheckStatus::WARNING, reason: 'one insecure');
+        $plain = new DomainHealthReport(host: 'example.com', emailSecurity: $email, tlsCipher: $tls, cookieSecurity: $cookie);
+        $wrapped = new DomainHealthReport(
+            host: 'example.com',
+            emailSecurity: Result::ok(value: $email),
+            tlsCipher: Result::ok(value: $tls),
+            cookieSecurity: Result::ok(value: $cookie),
+        );
+
+        Assert::same(
+            array_map(static fn($c): string => $c->check->value . '|' . $c->status->value . '|' . $c->reason, $plain->getChecks()),
+            array_map(static fn($c): string => $c->check->value . '|' . $c->status->value . '|' . $c->reason, $wrapped->getChecks()),
+        );
+        Assert::same(count($plain->getChecks()), 3);
+        Assert::same($plain->getCheck(name: CheckName::CookieSecurity)?->reason, 'one insecure');
+        Assert::same($plain->getStatus(), CheckStatus::WARNING);
+    }
+
+    public function erroredEmailTlsAndCookieChecksAreReportedUnderTheirOwnNames(): void
+    {
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            emailSecurity: Result::err(error: new CheckError(check: CheckName::EmailSecurity, message: 'e1')),
+            tlsCipher: Result::err(error: new CheckError(check: CheckName::TlsCipher, message: 'e2')),
+            cookieSecurity: Result::err(error: new CheckError(check: CheckName::CookieSecurity, message: 'e3')),
+        );
+
+        foreach ([[CheckName::EmailSecurity, 'e1'], [CheckName::TlsCipher, 'e2'], [CheckName::CookieSecurity, 'e3']] as [$name, $message]) {
+            $check = $report->getCheck(name: $name);
+            Assert::notNull($check);
+            Assert::same($check->status, CheckStatus::UNKNOWN);
+            Assert::string($check->reason)->contains($message);
+        }
+    }
+
+    public function getErrorsListsEveryErroredSlotInDeclarationOrder(): void
+    {
+        $errors = [
+            new CheckError(check: CheckName::Probe, message: 'p'),
+            new CheckError(check: CheckName::Ssl, message: 's'),
+            new CheckError(check: CheckName::CookieSecurity, message: 'c'),
+        ];
+        $report = new DomainHealthReport(
+            host: 'example.com',
+            probe: Result::err(error: $errors[0]),
+            ssl: Result::err(error: $errors[1]),
+            cookieSecurity: Result::err(error: $errors[2]),
+        );
+
+        Assert::same($report->getErrors(), $errors);
+    }
+
+    #[DataProvider('emailReasonProvider')]
+    public function buildsEmailSecurityReason(EmailSecurityCheck $check, string $expected): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', emailSecurity: $check);
+
+        Assert::same($report->getCheck(name: CheckName::EmailSecurity)?->reason, $expected);
+    }
+
+    /**
+     * @return iterable<string, array{EmailSecurityCheck, string}>
+     */
+    public static function emailReasonProvider(): iterable
+    {
+        yield 'nothing and no MX' => [new EmailSecurityCheck(status: CheckStatus::OK, hasSpf: false), 'No mail infrastructure; SPF/DMARC not expected'];
+        yield 'nothing but MX' => [
+            new EmailSecurityCheck(status: CheckStatus::WARNING, hasSpf: false, mxRecords: ['mx.example.com']),
+            'Mail accepted but SPF/DMARC missing',
+        ];
+        yield 'DMARC without a policy' => [
+            new EmailSecurityCheck(status: CheckStatus::OK, hasSpf: false, hasDmarc: true, mxRecords: ['mx.example.com']),
+            '1 MX; policies: DMARC',
+        ];
+        yield 'everything' => [
+            new EmailSecurityCheck(
+                status: CheckStatus::OK,
+                hasSpf: true,
+                hasDmarc: true,
+                dmarcPolicy: 'reject',
+                hasDkim: true,
+                dkimSelectorsFound: ['a', 'b'],
+                hasCaa: true,
+                caaRecords: ['0 issue "ca.example"'],
+                mxRecords: ['mx1.example.com', 'mx2.example.com'],
+            ),
+            '2 MX; policies: SPF, DMARC(reject), DKIM(a,b), CAA(1)',
+        ];
+    }
+
+    #[DataProvider('tlsReasonProvider')]
+    public function buildsTlsCipherReason(TlsCipherCheck $check, string $expected): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', tlsCipher: $check);
+
+        Assert::same($report->getCheck(name: CheckName::TlsCipher)?->reason, $expected);
+    }
+
+    /**
+     * @return iterable<string, array{TlsCipherCheck, string}>
+     */
+    public static function tlsReasonProvider(): iterable
+    {
+        yield 'no metadata, with reason' => [new TlsCipherCheck(status: CheckStatus::UNKNOWN, reason: 'handshake failed'), 'handshake failed'];
+        yield 'no metadata, no reason' => [new TlsCipherCheck(status: CheckStatus::UNKNOWN), 'TLS metadata unavailable'];
+        yield 'strong cipher' => [new TlsCipherCheck(status: CheckStatus::OK, tlsVersion: 'TLSv1.3', cipherName: 'AES256'), 'TLSv1.3 AES256'];
+        yield 'weak cipher' => [
+            new TlsCipherCheck(status: CheckStatus::WARNING, tlsVersion: 'TLSv1.2', cipherName: 'RC4', usesWeakCipher: true),
+            'TLSv1.2 RC4 (weak)',
+        ];
+        yield 'version without a cipher name' => [new TlsCipherCheck(status: CheckStatus::OK, tlsVersion: 'TLSv1.3'), 'TLSv1.3 '];
+    }
+
+    public function cookieSecurityReasonDefaultsToAnEmptyString(): void
+    {
+        $report = new DomainHealthReport(host: 'example.com', cookieSecurity: new CookieSecurityCheck(status: CheckStatus::OK));
+
+        Assert::same($report->getCheck(name: CheckName::CookieSecurity)?->reason, '');
     }
 }

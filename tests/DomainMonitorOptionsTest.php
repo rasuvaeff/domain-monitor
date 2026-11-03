@@ -217,4 +217,17 @@ final class DomainMonitorOptionsTest
         Assert::same($min->expectedStatus, 100);
         Assert::same($max->expectedStatus, 599);
     }
+
+    public function aZeroDurationTimeoutIsRejected(): void
+    {
+        $message = null;
+
+        try {
+            new DomainMonitorOptions(timeout: Duration::zero());
+        } catch (InvalidArgumentException $exception) {
+            $message = $exception->getMessage();
+        }
+
+        Assert::same($message, 'Timeout must be greater than 0');
+    }
 }

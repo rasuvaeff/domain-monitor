@@ -193,6 +193,25 @@ final class CookieSecurityServiceTest
         Assert::same($check->insecureCookieNames, ['secure']);
     }
 
+    public function skipsACookieWithAnEmptyName(): void
+    {
+        $response = $this->response(['=abc; Secure; HttpOnly', 'ok=1; Secure; HttpOnly']);
+
+        $check = (new CookieSecurityService())->check(response: $response);
+
+        Assert::same(\count($check->cookies), 1);
+        Assert::same($check->cookies[0]['name'], 'ok');
+    }
+
+    public function keepsReadingAttributesAfterOneWithoutAValue(): void
+    {
+        $response = $this->response(['session=abc; Secure; HttpOnly; Partitioned; Path=/app']);
+
+        $check = (new CookieSecurityService())->check(response: $response);
+
+        Assert::same($check->cookies[0]['path'], '/app');
+    }
+
     /**
      * @param list<string> $setCookie
      */

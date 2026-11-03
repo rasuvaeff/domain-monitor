@@ -108,4 +108,17 @@ final class PortServiceTest
             Assert::string($e->getMessage())->contains('Timeout must be greater than 0');
         }
     }
+
+    public function anOutOfRangePortIsRejected(): void
+    {
+        $message = null;
+
+        try {
+            (new PortService(connector: static fn(): array => []))->check(host: 'example.com', port: 0);
+        } catch (InvalidArgumentException $exception) {
+            $message = $exception->getMessage();
+        }
+
+        Assert::same($message, 'Invalid port 0');
+    }
 }

@@ -424,6 +424,35 @@ final class EmailSecurityServiceTest
         Assert::same($check->mxRecords, ['mx1.example.com', 'mx2.example.com']);
     }
 
+    public function aFailedDmarcLookupIsReportedAsNoDmarcPolicy(): void
+    {
+        $resolver = static fn(string $host, int $type): array|false => match ($host) {
+            'example.com' => [['type' => 'TXT', 'txt' => 'v=spf1 -all'], ['type' => 'MX', 'target' => 'mx.example.com']],
+            default => false,
+        };
+
+        $check = (new EmailSecurityService(resolver: $resolver))->check(host: 'example.com');
+
+        Assert::false($check->hasDmarc);
+        Assert::null($check->dmarcPolicy);
+        Assert::true($check->hasSpf);
+        Assert::same($check->status, CheckStatus::WARNING);
+    }
+
+    public function aFailedDkimLookupDoesNotStopTheRemainingSelectors(): void
+    {
+        $resolver = static fn(string $host, int $type): array|false => match ($host) {
+            'default._domainkey.example.com' => false,
+            'google._domainkey.example.com' => [['type' => 'TXT', 'txt' => 'v=DKIM1; p=abc']],
+            default => [],
+        };
+
+        $check = (new EmailSecurityService(resolver: $resolver, dkimSelectors: ['default', 'google']))->check(host: 'example.com');
+
+        Assert::same($check->dkimSelectorsFound, ['google']);
+        Assert::true($check->hasDkim);
+    }
+
     /**
      * @param array<int, array<string, mixed>>     $root
      * @param array<int, array<string, mixed>>     $dmarc
