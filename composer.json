@@ -52,7 +52,7 @@
         "symfony/http-client": "^7.0",
         "testo/bridge-infection": "^0.1.6",
         "testo/testo": "^0.10.25",
-        "vimeo/psalm": "^6.16"
+        "vimeo/psalm": "^7.0"
     },
     "suggest": {
         "ext-intl": "Enables IDN (internationalized domain name) normalization in HostNormalizer",
