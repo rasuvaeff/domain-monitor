@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE.md)
 [English version](README.md)
 
-Модульный набор инструментов для мониторинга доменов на PHP 8.3+. Без привязки
+Модульный набор инструментов для мониторинга доменов на PHP 8.3 – 8.6. Без привязки
 к фреймворку, PSR-совместимый, с небольшими иммутабельными DTO и узкими
 stateless-сервисами. Каждый чекер делает одну вещь — вы компонуете их по мере
 необходимости.
@@ -25,7 +25,7 @@ stateless-сервисами. Каждый чекер делает одну ве
 
 ## Требования
 
-- PHP 8.3+
+- PHP 8.3 – 8.6
 - `ext-openssl`, `ext-simplexml`
 - PSR-18 клиент и PSR-17 request factory для HTTP-проверок
 - `io-developer/php-whois` (тянет `ext-curl`, `ext-mbstring`)

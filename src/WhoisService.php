@@ -29,6 +29,10 @@ final readonly class WhoisService implements WhoisServiceInterface
         $normalizedHost = (new HostNormalizer())->normalizeHost(hostOrUrl: $host);
 
         try {
+            // The vendor docblock claims TldInfo, but loadDomainInfo() returns
+            // null at runtime when a server responds without parsed domain
+            // info — treat the result as untrusted and narrow below.
+            /** @var mixed $vendorInfo */
             $vendorInfo = $this->whois->loadDomainInfo(domain: $normalizedHost);
 
             if (!$vendorInfo instanceof VendorTldInfo) {
@@ -38,6 +42,7 @@ final readonly class WhoisService implements WhoisServiceInterface
                     return null;
                 }
 
+                /** @var mixed $vendorInfo */
                 $vendorInfo = $this->whois->loadDomainInfo(domain: $fallbackDomain);
 
                 if (!$vendorInfo instanceof VendorTldInfo) {
