@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE.md)
 [Русская версия](README.ru.md)
 
-A modular domain monitoring toolkit for PHP 8.3+. Zero-framework, PSR-compatible, with small immutable DTOs and focused stateless services. Each checker does one thing — you compose them as needed.
+A modular domain monitoring toolkit for PHP 8.3 – 8.6. Zero-framework, PSR-compatible, with small immutable DTOs and focused stateless services. Each checker does one thing — you compose them as needed.
 
 **Checks:** HTTP probing · SSL certificates · WHOIS · DNS · TCP ports · security headers · `robots.txt` · sitemaps · email security (SPF / DKIM / DMARC / CAA / MX) · TLS cipher suite · cookie security.
 
@@ -19,7 +19,7 @@ A modular domain monitoring toolkit for PHP 8.3+. Zero-framework, PSR-compatible
 
 ## Requirements
 
-- PHP 8.3+
+- PHP 8.3 – 8.6
 - `ext-openssl`, `ext-simplexml`
 - A PSR-18 client and PSR-17 request factory for HTTP-based checks
 - `io-developer/php-whois` (pulls `ext-curl`, `ext-mbstring`)
