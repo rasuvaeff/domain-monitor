@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.1 — 2026-11-22
 
 - `composer mutation` now runs Infection with `--with-uncovered`, so code the tests execute without naming it in `#[Covers]` is mutated and counted (overall MSI was 90% when measured this way, now 95% against `minMsi` 92). Added tests for the e-mail security, TLS cipher and cookie slots of `DomainHealthReport` (wrapping, error slots, reasons), `DomainMonitor` (cookie check on the probe response, exhausted budget for the content check, a service returning nothing, the circuit-breaker log context), `DomainMonitorBuilder` defaults, `WhoisService` value mapping, `SitemapService` nested namespaces, `RobotsTxtService` unicode whitespace, `EmailSecurityService` failed lookups, `ReportDiff` ties and `StatusTransition`/`ProbeResult` serialization, and the duration-timeout guards. `infection.json5` gained the template's signature-default ignore regex, `testFrameworkOptions` (`--suite=Unit`) and disabled `PublicVisibility`/`ProtectedVisibility`. Behaviour-neutral `src/` change: `TlsCipherService::check()` lists its parameters one per line so the ignore regex matches its defaults.
 - **Changed:** PHP 8.6 is supported: the `php` constraint is widened to
