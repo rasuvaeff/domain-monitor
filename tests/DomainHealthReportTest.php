@@ -525,8 +525,8 @@ final class DomainHealthReportTest
         $report = new DomainHealthReport(
             host: 'example.com',
             probe: new ProbeResult(status: 200, totalTime: 0.1),
-            dns: new DnsRecords(a: ['1.2.3.4']),
             ssl: Result::err(error: new CheckError(check: CheckName::Ssl, message: 'boom')),
+            dns: new DnsRecords(a: ['1.2.3.4']),
         );
 
         $json = $report->jsonSerialize();
