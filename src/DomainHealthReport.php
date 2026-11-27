@@ -103,73 +103,73 @@ final readonly class DomainHealthReport implements JsonSerializable
         if ($this->probe !== null) {
             $results[] = $this->probe->isOk()
                 ? $this->probeCheck(probe: $this->probe->unwrap())
-                : self::failed(check: CheckName::Probe, error: $this->probe->error());
+                : $this->failed(check: CheckName::Probe, error: $this->probe->error());
         }
 
         if ($this->ssl !== null) {
             $results[] = $this->ssl->isOk()
                 ? $this->sslCheck(certificate: $this->ssl->unwrap(), thresholds: $thresholds)
-                : self::failed(check: CheckName::Ssl, error: $this->ssl->error());
+                : $this->failed(check: CheckName::Ssl, error: $this->ssl->error());
         }
 
         if ($this->whois !== null) {
             $results[] = $this->whois->isOk()
                 ? $this->whoisCheck(tldInfo: $this->whois->unwrap(), thresholds: $thresholds)
-                : self::failed(check: CheckName::Whois, error: $this->whois->error());
+                : $this->failed(check: CheckName::Whois, error: $this->whois->error());
         }
 
         if ($this->dns !== null) {
             $results[] = $this->dns->isOk()
                 ? $this->dnsCheck(dnsRecords: $this->dns->unwrap())
-                : self::failed(check: CheckName::Dns, error: $this->dns->error());
+                : $this->failed(check: CheckName::Dns, error: $this->dns->error());
         }
 
         if ($this->content !== null) {
             $results[] = $this->content->isOk()
                 ? $this->contentCheck(content: $this->content->unwrap())
-                : self::failed(check: CheckName::Content, error: $this->content->error());
+                : $this->failed(check: CheckName::Content, error: $this->content->error());
         }
 
         if ($this->port !== null) {
             $results[] = $this->port->isOk()
                 ? $this->portCheck(portCheck: $this->port->unwrap())
-                : self::failed(check: CheckName::Port, error: $this->port->error());
+                : $this->failed(check: CheckName::Port, error: $this->port->error());
         }
 
         if ($this->securityHeaders !== null) {
             $results[] = $this->securityHeaders->isOk()
                 ? $this->securityHeadersCheck(headers: $this->securityHeaders->unwrap())
-                : self::failed(check: CheckName::SecurityHeaders, error: $this->securityHeaders->error());
+                : $this->failed(check: CheckName::SecurityHeaders, error: $this->securityHeaders->error());
         }
 
         if ($this->robotsTxt !== null) {
             $results[] = $this->robotsTxt->isOk()
                 ? $this->robotsTxtCheck(robots: $this->robotsTxt->unwrap())
-                : self::failed(check: CheckName::RobotsTxt, error: $this->robotsTxt->error());
+                : $this->failed(check: CheckName::RobotsTxt, error: $this->robotsTxt->error());
         }
 
         if ($this->sitemap !== null) {
             $results[] = $this->sitemap->isOk()
                 ? $this->sitemapCheck(sitemap: $this->sitemap->unwrap())
-                : self::failed(check: CheckName::Sitemap, error: $this->sitemap->error());
+                : $this->failed(check: CheckName::Sitemap, error: $this->sitemap->error());
         }
 
         if ($this->emailSecurity !== null) {
             $results[] = $this->emailSecurity->isOk()
                 ? $this->emailSecurityCheck(check: $this->emailSecurity->unwrap())
-                : self::failed(check: CheckName::EmailSecurity, error: $this->emailSecurity->error());
+                : $this->failed(check: CheckName::EmailSecurity, error: $this->emailSecurity->error());
         }
 
         if ($this->tlsCipher !== null) {
             $results[] = $this->tlsCipher->isOk()
                 ? $this->tlsCipherCheck(check: $this->tlsCipher->unwrap())
-                : self::failed(check: CheckName::TlsCipher, error: $this->tlsCipher->error());
+                : $this->failed(check: CheckName::TlsCipher, error: $this->tlsCipher->error());
         }
 
         if ($this->cookieSecurity !== null) {
             $results[] = $this->cookieSecurity->isOk()
                 ? $this->cookieSecurityCheck(check: $this->cookieSecurity->unwrap())
-                : self::failed(check: CheckName::CookieSecurity, error: $this->cookieSecurity->error());
+                : $this->failed(check: CheckName::CookieSecurity, error: $this->cookieSecurity->error());
         }
 
         return $results;
@@ -250,27 +250,27 @@ final readonly class DomainHealthReport implements JsonSerializable
             'status' => $this->getStatus()->value,
             'checks' => $this->getChecks(),
             'errors' => $this->getErrors(),
-            'probe' => self::serialize(slot: $this->probe),
-            'ssl' => self::serialize(slot: $this->ssl),
-            'whois' => self::serialize(slot: $this->whois),
-            'dns' => self::serialize(slot: $this->dns),
-            'content' => self::serialize(slot: $this->content),
-            'port' => self::serialize(slot: $this->port),
-            'securityHeaders' => self::serialize(slot: $this->securityHeaders),
-            'robotsTxt' => self::serialize(slot: $this->robotsTxt),
-            'sitemap' => self::serialize(slot: $this->sitemap),
-            'emailSecurity' => self::serialize(slot: $this->emailSecurity),
-            'tlsCipher' => self::serialize(slot: $this->tlsCipher),
-            'cookieSecurity' => self::serialize(slot: $this->cookieSecurity),
+            'probe' => $this->serialize(slot: $this->probe),
+            'ssl' => $this->serialize(slot: $this->ssl),
+            'whois' => $this->serialize(slot: $this->whois),
+            'dns' => $this->serialize(slot: $this->dns),
+            'content' => $this->serialize(slot: $this->content),
+            'port' => $this->serialize(slot: $this->port),
+            'securityHeaders' => $this->serialize(slot: $this->securityHeaders),
+            'robotsTxt' => $this->serialize(slot: $this->robotsTxt),
+            'sitemap' => $this->serialize(slot: $this->sitemap),
+            'emailSecurity' => $this->serialize(slot: $this->emailSecurity),
+            'tlsCipher' => $this->serialize(slot: $this->tlsCipher),
+            'cookieSecurity' => $this->serialize(slot: $this->cookieSecurity),
         ];
     }
 
-    private static function serialize(?Result $slot): mixed
+    private function serialize(?Result $slot): mixed
     {
         return $slot?->unwrapOr(default: $slot->error());
     }
 
-    private static function failed(CheckName $check, mixed $error): CheckResult
+    private function failed(CheckName $check, mixed $error): CheckResult
     {
         $message = $error instanceof CheckError ? $error->message : 'Check failed';
 
